@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+*.log
+
+# Databases & Local Models
+*.sqlite3
+*.db
+models_cache/
+datasets_export/
+
+# IDEs
+.vscode/
+.idea/
+.DS_Store
