@@ -47,7 +47,11 @@ class Memory(Base, UUIDTimestampMixin):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    category: Mapped[str] = mapped_column(String(50), default="preference", index=True, nullable=False)  # preference, goal, responsibility, decision, academic, work
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    category: Mapped[str] = mapped_column(String(50), default="preference", index=True, nullable=False)
+  # preference, goal, responsibility, decision, academic, work
     role_context: Mapped[str] = mapped_column(String(50), default="personal", index=True, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     importance_score: Mapped[float] = mapped_column(Float, default=0.5, nullable=False)
@@ -62,7 +66,11 @@ class KnowledgeDocument(Base, UUIDTimestampMixin):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), index=True, nullable=True
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+
     role_context: Mapped[str] = mapped_column(String(50), default="personal", nullable=False)
     chunk_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)

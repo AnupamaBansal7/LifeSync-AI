@@ -1,0 +1,84 @@
+name: LifeSync AI CI
+
+on:
+  push:
+    branches: [main, "release/**", "feature/**", "chore/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-tests:
+    name: Backend Pytest Suite
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: lifesync
+          POSTGRES_PASSWORD: lifesync_secret
+          POSTGRES_DB: lifesync_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Backend Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "./backend[dev]"
+
+      - name: Run Pytest Test Suite
+        env:
+          DATABASE_URL: postgresql+asyncpg://lifesync:lifesync_secret@localhost:5432/lifesync_db
+          DATABASE_URL_SYNC: postgresql+psycopg2://lifesync:lifesync_secret@localhost:5432/lifesync_db
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: test-secret-key-for-continuous-integration-only
+        run: |
+          pytest backend/tests -v
+
+  frontend-build:
+    name: Frontend Build & Typecheck
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: frontend/package.json
+
+      - name: Install Frontend Dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Run TypeScript Check & Production Build
+        working-directory: ./frontend
+        run: npm run build

@@ -29,8 +29,25 @@ class AutomationRule(Base, UUIDTimestampMixin):
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     trigger_type: Mapped[str] = mapped_column(String(50), nullable=False)  # schedule, task_overdue, habit_missed
     trigger_config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
-    action_type: Mapped[str] = mapped_column(String(50), nullable=False)   # daily_review, reschedule_suggest, notify
+    action_type: Mapped[str] = mapped_column(String(50), nullable=False)   # daily_review, reschedule_suggest, notify, email_summary
     action_config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
     requires_approval: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_triggered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AutomationTriggerLog(Base, UUIDTimestampMixin):
+    __tablename__ = "automation_trigger_logs"
+
+    automation_rule_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("automation_rules.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    trigger_event: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="success", nullable=False)  # success, failed, awaiting_approval
+    output_summary: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    executed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )

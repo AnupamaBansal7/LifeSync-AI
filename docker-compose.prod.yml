@@ -1,0 +1,71 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: lifesync_prod_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lifesync}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lifesync_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-lifesync_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lifesync} -d ${POSTGRES_DB:-lifesync_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: lifesync_prod_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_prod_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lifesync_prod_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-lifesync}:${POSTGRES_PASSWORD:-lifesync_secret}@postgres:5432/${POSTGRES_DB:-lifesync_db}
+      DATABASE_URL_SYNC: postgresql+psycopg2://${POSTGRES_USER:-lifesync}:${POSTGRES_PASSWORD:-lifesync_secret}@postgres:5432/${POSTGRES_DB:-lifesync_db}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-lifesync-super-secret-key-production-change-me}
+      APP_ENV: production
+      DEBUG: "false"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: lifesync_prod_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+
+volumes:
+  postgres_prod_data:
+  redis_prod_data:

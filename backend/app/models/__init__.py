@@ -1,6 +1,15 @@
 from app.models.base import Base
-from app.models.user import User, Role, UserRole, UserProfile, UserPreference, UserModule
-from app.models.productivity import Task, TaskHistory, Goal, Milestone, Habit, HabitLog
+from app.models.user import (
+    User,
+    Role,
+    UserRole,
+    UserProfile,
+    UserPreference,
+    UserModule,
+    UserIntegration,
+)
+from app.models.productivity import Project, Task, TaskHistory, Goal, Milestone, Habit, HabitLog
+
 from app.models.calendar import CalendarEvent, DailyPlan
 from app.models.ai_system import (
     Conversation,
@@ -13,7 +22,8 @@ from app.models.ai_system import (
     ModelConfiguration,
     TrainingDatasetRecord,
 )
-from app.models.automation import Notification, AutomationRule
+from app.models.automation import Notification, AutomationRule, AutomationTriggerLog
+from app.models.workflow import WorkflowExecution, WorkflowStepExecution
 
 __all__ = [
     "Base",
@@ -23,7 +33,10 @@ __all__ = [
     "UserProfile",
     "UserPreference",
     "UserModule",
+    "UserIntegration",
+    "Project",
     "Task",
+
     "TaskHistory",
     "Goal",
     "Milestone",
@@ -42,4 +55,8 @@ __all__ = [
     "TrainingDatasetRecord",
     "Notification",
     "AutomationRule",
+    "AutomationTriggerLog",
+    "WorkflowExecution",
+    "WorkflowStepExecution",
 ]
+

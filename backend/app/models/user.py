@@ -1,6 +1,7 @@
 import uuid
+from datetime import datetime
 from typing import List, Optional
-from sqlalchemy import Boolean, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, UUIDTimestampMixin
@@ -26,6 +27,9 @@ class User(Base, UUIDTimestampMixin):
         back_populates="user", cascade="all, delete-orphan"
     )
     modules: Mapped[List["UserModule"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    integrations: Mapped[List["UserIntegration"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 
@@ -105,3 +109,23 @@ class UserModule(Base, UUIDTimestampMixin):
     config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
     user: Mapped["User"] = relationship(back_populates="modules")
+
+
+class UserIntegration(Base, UUIDTimestampMixin):
+    __tablename__ = "user_integrations"
+    __table_args__ = (UniqueConstraint("user_id", "service", name="uq_user_integration_service"),)
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    service: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="disconnected", nullable=False)
+    account_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    access_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    refresh_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    token_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    scopes: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    config_data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user: Mapped["User"] = relationship(back_populates="integrations")

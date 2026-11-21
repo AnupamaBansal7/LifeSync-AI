@@ -7,15 +7,34 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, UUIDTimestampMixin
 
 
+class Project(Base, UUIDTimestampMixin):
+    __tablename__ = "projects"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    role_context: Mapped[str] = mapped_column(String(50), default="professional", index=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="active", index=True, nullable=False)  # active, paused, completed, archived
+    target_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    notes: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    decisions: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+
+
 class Task(Base, UUIDTimestampMixin):
     __tablename__ = "tasks"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), index=True, nullable=True
+    )
     goal_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("goals.id", ondelete="SET NULL"), index=True, nullable=True
     )
+
     parent_task_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="CASCADE"), index=True, nullable=True
     )
@@ -76,7 +95,11 @@ class Goal(Base, UUIDTimestampMixin):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), index=True, nullable=True
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     horizon: Mapped[str] = mapped_column(String(24), default="short_term", nullable=False)  # short_term, long_term
     role_context: Mapped[str] = mapped_column(String(50), default="personal", index=True, nullable=False)

@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     LOCAL_CHAT_MODEL: str = "llama3.1:8b"
     LOCAL_EMBEDDING_MODEL: str = "nomic-embed-text"
 
+    # External Integrations (Google OAuth & Gmail)
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = "http://localhost:5173/integrations/callback"
+
 
 @lru_cache
 def get_settings() -> Settings:
