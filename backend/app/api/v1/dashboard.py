@@ -65,14 +65,16 @@ async def get_role_aware_dashboard(
     habits = h_res.scalars().all()
 
     habit_ids = [h.id for h in habits]
-    today_logs_res = await db.execute(
-        select(HabitLog.habit_id).where(
-            HabitLog.habit_id.in_(habit_ids),
-            HabitLog.log_date == today,
-            HabitLog.completed.is_(True),
+    completed_habit_ids = set()
+    if habit_ids:
+        today_logs_res = await db.execute(
+            select(HabitLog.habit_id).where(
+                HabitLog.habit_id.in_(habit_ids),
+                HabitLog.log_date == today,
+                HabitLog.completed.is_(True),
+            )
         )
-    )
-    completed_habit_ids = set(today_logs_res.scalars().all())
+        completed_habit_ids = set(today_logs_res.scalars().all())
 
     habits_with_status = []
     for h in habits:
@@ -186,8 +188,19 @@ async def get_role_aware_dashboard(
     user_display_name = current_user.full_name if current_user.full_name and current_user.full_name.strip() else current_user.email.split('@')[0].capitalize()
 
     # Real Email Intelligence Summary
-    from app.services.integrations_service import IntegrationsService
-    email_intelligence = await IntegrationsService.get_email_intelligence_summary(db, current_user.id)
+    try:
+        from app.services.integrations_service import IntegrationsService
+        email_intelligence = await IntegrationsService.get_email_intelligence_summary(db, current_user.id)
+    except Exception:
+        email_intelligence = {
+            "unread_count": 0,
+            "important_count": 0,
+            "unread_important_messages": [],
+            "emails_needing_reply": [],
+            "extracted_deadlines": [],
+            "connected_provider": "simulation",
+            "account_email": None,
+        }
 
     # Real Agent Activity
     runs_res = await db.execute(
@@ -335,7 +348,13 @@ async def get_role_aware_dashboard(
         "agent_activity": agent_activity,
         "proactive_insights": proactive_insights,
         "recent_notifications": [
-            {"id": str(n.id), "title": n.title, "message": n.message, "category": n.category, "created_at": n.created_at.isoformat()}
+            {
+                "id": str(n.id),
+                "title": n.title,
+                "message": n.message,
+                "category": n.category,
+                "created_at": n.created_at.isoformat() if n.created_at else now.isoformat(),
+            }
             for n in unread_notifications
         ],
     }

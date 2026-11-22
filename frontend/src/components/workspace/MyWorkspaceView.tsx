@@ -8,6 +8,7 @@ import {
   Layers,
   Lightbulb,
   Plus,
+  Sparkles,
   StickyNote,
   Target,
   Workflow,
@@ -257,12 +258,23 @@ export const MyWorkspaceView: React.FC<MyWorkspaceViewProps> = ({
               Dedicated work contexts for your initiatives, architectural decisions, and continuous notes.
             </p>
           </div>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/20 transition cursor-pointer"
-          >
-            <Plus className="w-4 h-4" /> New Project
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onNavigateTab('assistant')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-950/60 hover:bg-purple-900/60 border border-purple-500/40 text-purple-200 text-xs font-semibold shadow-lg shadow-purple-950/40 transition cursor-pointer"
+              title="Start conversational zero-form project intake session"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
+              <span>Plan with AI (No Forms)</span>
+            </button>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/20 transition cursor-pointer"
+            >
+              <Plus className="w-4 h-4" /> New Project
+            </button>
+          </div>
         </div>
 
         {loadingProjects ? (

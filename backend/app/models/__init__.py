@@ -25,6 +25,7 @@ from app.models.ai_system import (
 from app.models.automation import Notification, AutomationRule, AutomationTriggerLog
 from app.models.workflow import WorkflowExecution, WorkflowStepExecution
 from app.models.shadow_execution import TransactionPlan, TransactionStep
+from app.models.intake import IntakeSession
 
 __all__ = [
     "Base",
@@ -60,5 +61,6 @@ __all__ = [
     "WorkflowStepExecution",
     "TransactionPlan",
     "TransactionStep",
+    "IntakeSession",
 ]
 

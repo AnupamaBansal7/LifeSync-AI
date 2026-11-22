@@ -113,6 +113,17 @@ export const TasksView: React.FC<TasksViewProps> = ({
             </button>
           </div>
 
+          {/* Zero-Form AI Plan CTA */}
+          <button
+            type="button"
+            onClick={() => onAIBreakDown('Help me capture and break down tasks for my project')}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-950/60 hover:bg-purple-900/60 border border-purple-500/40 text-purple-200 text-xs font-semibold shadow-lg shadow-purple-950/40 transition cursor-pointer"
+            title="Start conversational zero-form task intake session"
+          >
+            <Sparkles className="w-4 h-4 text-purple-400 animate-pulse" />
+            <span>Plan with AI (No Forms)</span>
+          </button>
+
           {/* New Task Button */}
           <button
             onClick={() => setShowCreateModal(true)}

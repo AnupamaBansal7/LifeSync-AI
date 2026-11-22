@@ -10,6 +10,7 @@ from app.api.v1 import (
     email,
     executions,
     goals_habits,
+    intake,
     integrations,
     proactive,
     projects,
@@ -28,6 +29,7 @@ api_router.include_router(goals_habits.router)
 api_router.include_router(calendar.router)
 api_router.include_router(email.router)
 api_router.include_router(executions.router)
+api_router.include_router(intake.router)
 api_router.include_router(agents.router)
 api_router.include_router(agents_memory.router)
 api_router.include_router(automations.router)

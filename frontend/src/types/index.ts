@@ -420,3 +420,23 @@ export interface TransactionPlan {
   rolled_back_at?: string;
   steps: TransactionStep[];
 }
+
+export interface ClarificationOption {
+  id: string;
+  label: string;
+  description?: string;
+  value: string;
+}
+
+export interface ClarificationCardData {
+  session_id: string;
+  step: number;
+  estimated_total_steps: number;
+  domain: string;
+  question: string;
+  selection_mode: 'single' | 'multi';
+  options: ClarificationOption[];
+  allow_custom_input: boolean;
+  can_skip_and_generate: boolean;
+}
+

@@ -252,6 +252,7 @@ export default function App() {
           steps: res.data.steps,
           approvals: res.data.pending_approvals,
           plan: res.data.transaction_plan,
+          card: res.data.clarification_card,
         },
       ]);
       await refreshAllData(activeRole);

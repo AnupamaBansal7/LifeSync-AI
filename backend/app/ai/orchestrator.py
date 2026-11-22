@@ -415,6 +415,95 @@ async def run_multi_agent_pipeline(
     # Resolve any follow-up references from recent conversation history
     follow_up_entities = _resolve_follow_up_entities(user_message, history_messages)
 
+    # 3.5 Check for Conversational Zero-Form Intake Session
+    from app.models.intake import IntakeSession
+    from app.services.agentic_intake_service import AgenticIntakeService
+
+    res_intake = await db.execute(
+        select(IntakeSession)
+        .where(IntakeSession.user_id == user.id, IntakeSession.status == "GATHERING_INFO")
+        .order_by(IntakeSession.created_at.desc())
+        .limit(1)
+    )
+    active_intake = res_intake.scalar_one_or_none()
+
+    is_intake_answer = bool(active_intake and (
+        user_message.strip().lower() in ["skip", "skip and generate", "build plan now", "generate plan", "continue"]
+        or any(user_message.strip().lower().startswith(x) for x in ["step", "stage", "opt-", "int-", "ws-", "cal-", "g-", "inc-"])
+        or len(user_message.split()) <= 8
+    ))
+
+    is_new_high_level_intake = (
+        intent in ["goal_management", "task_decomposition"] and
+        any(k in user_message.lower() for k in [
+            "help me set a goal", "help me set an okr", "plan my project",
+            "break down my project", "i want to start", "help me plan",
+            "plan a new goal", "zero-form", "architect a new", "start a goal",
+            "plan a goal", "help me achieve"
+        ])
+    )
+
+    if active_intake and is_intake_answer:
+        is_skip = "skip" in user_message.lower()
+        intake_res = await AgenticIntakeService.respond_to_intake(
+            db=db,
+            user_id=user.id,
+            session_id=active_intake.id,
+            selected_options=[user_message.strip()],
+            custom_text=user_message.strip() if not is_skip else None,
+            skip_and_generate=is_skip,
+            role_context=active_role,
+        )
+        if intake_res.get("status") == "CLARIFICATION_REQUIRED":
+            card_dict = intake_res.get("clarification_card")
+            setattr(agent_run, "clarification_card", card_dict)
+            final_reply = intake_res.get("reply", "Here are the next options:")
+        else:
+            plan_dict = intake_res.get("transaction_plan")
+            setattr(agent_run, "transaction_plan", plan_dict)
+            final_reply = intake_res.get("reply", "Blueprint plan simulated.")
+
+        agent_run.final_response = final_reply
+        agent_run.status = "completed"
+        agent_run.latency_ms = int((time.perf_counter() - t0) * 1000)
+        db.add(Message(conversation_id=conversation.id, user_id=user.id, sender="assistant", content=final_reply))
+        await db.commit()
+        return conversation, agent_run, steps, created_approvals
+
+    elif is_new_high_level_intake:
+        intake_res = await AgenticIntakeService.start_or_continue_intake(
+            db=db,
+            user_id=user.id,
+            prompt=user_message,
+            role_context=active_role,
+        )
+        if intake_res.get("status") == "CLARIFICATION_REQUIRED":
+            card_dict = intake_res.get("clarification_card")
+            setattr(agent_run, "clarification_card", card_dict)
+            step_intake = AgentExecutionStep(
+                agent_run_id=agent_run.id,
+                step_order=step_counter,
+                agent_name="IntakeArchitectAgent",
+                tool_name="clarification_card",
+                input_summary={"prompt": user_message[:80], "domain": card_dict.get("domain")},
+                output_summary={"question": card_dict.get("question"), "options_count": len(card_dict.get("options", []))},
+                status="completed",
+            )
+            db.add(step_intake)
+            steps.append(step_intake)
+            final_reply = intake_res.get("reply", "Here are a few options to tailor your plan:")
+        else:
+            plan_dict = intake_res.get("transaction_plan")
+            setattr(agent_run, "transaction_plan", plan_dict)
+            final_reply = intake_res.get("reply", "Blueprint plan simulated.")
+
+        agent_run.final_response = final_reply
+        agent_run.status = "completed"
+        agent_run.latency_ms = int((time.perf_counter() - t0) * 1000)
+        db.add(Message(conversation_id=conversation.id, user_id=user.id, sender="assistant", content=final_reply))
+        await db.commit()
+        return conversation, agent_run, steps, created_approvals
+
     # 4. Attempt Dynamic LLM Tool Calling (Online Path)
     provider = ProviderRegistry.get_provider()
     tool_defs = get_openai_tool_definitions()
@@ -1458,31 +1547,42 @@ async def run_multi_agent_pipeline(
         # --- M. GOALS & MILESTONES ---
         elif intent == "goal_management":
             clean_g = re.sub(r"^(create|add|set)\s+(a\s+)?(goal|okr)\s*(for|to)?\s*", "", user_message, flags=re.I).strip() or user_message[:60]
-            g_tool = get_tool("create_goal")
-            g_res = await g_tool.execute(
+            plan_dict = await ShadowExecutionService.simulate_plan(
                 db=db,
                 user_id=user.id,
-                args={
-                    "title": clean_g,
-                    "horizon": "short_term",
-                    "role_context": active_role,
-                    "milestones": [f"Phase 1: Architecture & Planning for {clean_g[:30]}", f"Phase 2: Execution & Verification"],
-                },
+                intent_summary=f"Create goal '{clean_g}'",
+                proposed_tool_calls=[{
+                    "tool_name": "create_goal",
+                    "args": {
+                        "title": clean_g,
+                        "horizon": "short_term",
+                        "role_context": active_role,
+                        "milestones": [f"Phase 1: Architecture & Planning for {clean_g[:30]}", f"Phase 2: Execution & Verification"],
+                    }
+                }],
+                auto_approve_if_safe=False,
+                plan_metadata={"agent_run_id": str(agent_run.id), "intent": intent},
             )
+            setattr(agent_run, "transaction_plan", plan_dict)
+
             step_g = AgentExecutionStep(
                 agent_run_id=agent_run.id,
                 step_order=step_counter,
                 agent_name="GoalManagementAgent",
                 tool_name="create_goal",
                 input_summary={"goal": clean_g},
-                output_summary=g_res,
+                output_summary={"plan_id": plan_dict["id"], "status": "SIMULATED"},
                 status="completed",
             )
             db.add(step_g)
             steps.append(step_g)
             step_counter += 1
 
-            final_reply = f"**Goal Agent**: Established strategic goal **'{clean_g}'** with 2 progressive milestones in your Goals workspace!"
+            final_reply = (
+                f"**Shadow Execution Simulation Ready**\n\n"
+                f"I've simulated creating strategic goal **'{clean_g}'** with 2 progressive milestones in your Goals workspace.\n\n"
+                f"🛡️ **No database records have been modified yet.** You can review the diff and apply or reject the change below."
+            )
 
         # --- N. SEMANTIC MEMORY MANAGEMENT ---
         elif intent == "memory_management":

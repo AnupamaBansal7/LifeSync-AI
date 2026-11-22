@@ -102,6 +102,16 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
           </div>
 
           <button
+            type="button"
+            onClick={() => onAIDecomposeGoal('Help me set a new goal')}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-950/60 hover:bg-purple-900/60 border border-purple-500/40 text-purple-200 text-xs font-semibold shadow-lg shadow-purple-950/40 transition cursor-pointer"
+            title="Start conversational zero-form planning session"
+          >
+            <Sparkles className="w-4 h-4 text-purple-400 animate-pulse" />
+            <span>Plan with AI (No Forms)</span>
+          </button>
+
+          <button
             onClick={() => setShowCreateModal(true)}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition cursor-pointer"
           >

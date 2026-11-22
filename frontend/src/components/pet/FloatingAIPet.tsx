@@ -16,14 +16,18 @@ import {
   ShieldCheck,
   Sparkles,
   User as UserIcon,
+  Volume2,
+  VolumeX,
   X,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 import { api } from '../../lib/api';
-import type { ActionApproval, AICoreStatus, DashboardSummary, ExecutionStep, TransactionPlan, User } from '../../types';
+import type { ActionApproval, AICoreStatus, ClarificationCardData, DashboardSummary, ExecutionStep, TransactionPlan, User } from '../../types';
 import type { NavTab } from '../layout/Sidebar';
 import { ShadowDiffCard } from '../executions/ShadowDiffCard';
+import { ClarificationCard } from '../chat/ClarificationCard';
+import { useVoiceConversation } from '../../hooks/useVoiceConversation';
 
 interface PetMessage {
   id: string;
@@ -34,6 +38,7 @@ interface PetMessage {
   steps?: ExecutionStep[];
   approvals?: ActionApproval[];
   plan?: TransactionPlan;
+  card?: ClarificationCardData;
   timestamp: Date;
   hasScreen?: boolean;
 }
@@ -158,9 +163,22 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
   const [messages, setMessages] = useState<PetMessage[]>([]);
   const [activeSpecialist, setActiveSpecialist] = useState<string>('LifeSync AI Orchestrator');
 
-  // Voice Recognition
-  const [isListening, setIsListening] = useState(false);
-  const recognitionRef = useRef<any>(null);
+  // Voice & Readback Hook
+  const {
+    isListening,
+    isSupported: isVoiceSupported,
+    voiceReadbackEnabled,
+    setVoiceReadbackEnabled,
+    toggleListening: toggleVoiceListening,
+    speak,
+  } = useVoiceConversation({
+    onTranscript: (text) => {
+      setInput(text);
+      onStatusChange?.('idle');
+    },
+  });
+
+  const [activeIntakeSessionId, setActiveIntakeSessionId] = useState<string | null>(null);
 
   // Screen Sharing
   const [isScreenSharing, setIsScreenSharing] = useState(false);
@@ -184,63 +202,23 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
         {
           id: 'welcome-msg',
           sender: 'assistant',
-          content: `Hello ${firstName}! I am **Sync**, your floating AI companion.\n\nI operate across your entire workspace in **${activeRole.toUpperCase()}** mode. You can tell me to:\n• *"Plan my day"* or *"Schedule 2 hours for DSA tomorrow"*\n• *"Create a to-do list for tomorrow: Project docs, DBMS study, and revision"*\n• *"Send an email to my professor regarding assignment extension"*\n• *"Analyze my shared screen"* by clicking the monitor icon below.`,
+          content: `Hello ${firstName}! I am **Sync**, your floating AI companion.\n\nI operate across your entire workspace in **${activeRole.toUpperCase()}** mode. You can tell me to:\n• *"Plan my day"* or *"Schedule 2 hours for DSA tomorrow"*\n• *"Help me set a goal to master distributed systems"*\n• *"Create a to-do list for tomorrow: Project docs, DBMS study, and revision"*\n• *"Send an email to my professor regarding assignment extension"*\n• *"Analyze my shared screen"* by clicking the monitor icon below.`,
           timestamp: new Date(),
         },
       ]);
     }
   }, [user, activeRole]);
 
-  // Setup Web Speech API
-  useEffect(() => {
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const rec = new SpeechRecognition();
-      rec.continuous = false;
-      rec.interimResults = false;
-      rec.lang = 'en-US';
-
-      rec.onresult = (e: any) => {
-        const transcript = e.results[0][0].transcript;
-        setInput(transcript);
-        setIsListening(false);
-        onStatusChange?.('idle');
-      };
-
-      rec.onerror = () => {
-        setIsListening(false);
-        onStatusChange?.('idle');
-      };
-
-      rec.onend = () => {
-        setIsListening(false);
-        onStatusChange?.('idle');
-      };
-
-      recognitionRef.current = rec;
-    }
-  }, []);
-
   const toggleListening = () => {
-    if (!recognitionRef.current) {
+    if (!isVoiceSupported) {
       alert('Speech recognition is not supported in this browser. Please try Google Chrome or Edge.');
       return;
     }
-
-    if (isListening) {
-      recognitionRef.current.stop();
-      setIsListening(false);
-      onStatusChange?.('idle');
-    } else {
-      setIsListening(true);
+    toggleVoiceListening();
+    if (!isListening) {
       onStatusChange?.('listening');
-      try {
-        recognitionRef.current.start();
-      } catch {
-        setIsListening(false);
-        onStatusChange?.('idle');
-      }
+    } else {
+      onStatusChange?.('idle');
     }
   };
 
@@ -365,9 +343,18 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
         steps: res.data.steps,
         approvals: res.data.pending_approvals,
         plan: res.data.transaction_plan,
+        card: res.data.clarification_card,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, assistantMsg]);
+
+      if (res.data.clarification_card) {
+        setActiveIntakeSessionId(res.data.clarification_card.session_id);
+      }
+
+      if (voiceReadbackEnabled && res.data.reply) {
+        speak(res.data.reply);
+      }
 
       // Refresh parent app view data (tasks, habits, calendar, etc.)
       if (onRefreshData) {
@@ -387,6 +374,63 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
       ]);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleClarificationResponse = async (
+    selectedOptions: string[],
+    customText?: string,
+    skipAndGenerate: boolean = false
+  ) => {
+    if (activeIntakeSessionId) {
+      setBusy(true);
+      onStatusChange?.('thinking');
+      try {
+        const res = await api.post(`/intake/${activeIntakeSessionId}/respond`, {
+          selected_options: selectedOptions,
+          custom_text: customText,
+          skip_and_generate: skipAndGenerate,
+          role_context: activeRole,
+        });
+
+        if (res.data.clarification_card) {
+          const cardMsg: PetMessage = {
+            id: `card-${Date.now()}`,
+            sender: 'assistant',
+            content: res.data.reply || '',
+            card: res.data.clarification_card,
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, cardMsg]);
+          if (voiceReadbackEnabled) {
+            speak(res.data.reply || res.data.clarification_card.question);
+          }
+        } else if (res.data.transaction_plan) {
+          const planMsg: PetMessage = {
+            id: `plan-${Date.now()}`,
+            sender: 'assistant',
+            content: res.data.reply || 'Blueprint plan compiled and simulated:',
+            plan: res.data.transaction_plan,
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, planMsg]);
+          setActiveIntakeSessionId(null);
+          if (voiceReadbackEnabled) {
+            speak('Your blueprint plan has been simulated. You can review the diff and apply or reject it.');
+          }
+        }
+        if (onRefreshData) {
+          await onRefreshData();
+        }
+      } catch (err: any) {
+        console.error('Intake respond error:', err);
+      } finally {
+        setBusy(false);
+        onStatusChange?.('idle');
+      }
+    } else {
+      const text = customText || selectedOptions.join(', ');
+      await handleSend(text);
     }
   };
 
@@ -539,6 +583,18 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
                     Screen Shared
                   </span>
                 )}
+                <button
+                  type="button"
+                  onClick={() => setVoiceReadbackEnabled(!voiceReadbackEnabled)}
+                  className={`p-1.5 rounded-lg transition ${
+                    voiceReadbackEnabled
+                      ? 'text-purple-300 bg-purple-900/40 border border-purple-500/40 shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                  title={voiceReadbackEnabled ? 'Voice readback active (click to mute)' : 'Enable voice readback'}
+                >
+                  {voiceReadbackEnabled ? <Volume2 className="w-3.5 h-3.5 text-purple-400" /> : <VolumeX className="w-3.5 h-3.5" />}
+                </button>
                 <button
                   onClick={() => setIsExpanded(!isExpanded)}
                   className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
@@ -700,6 +756,17 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
                               plan={msg.plan}
                               onRefreshData={onRefreshData}
                               compact
+                            />
+                          </div>
+                        )}
+
+                        {/* Conversational Zero-Form Intake Card */}
+                        {msg.card && (
+                          <div className="pt-2">
+                            <ClarificationCard
+                              card={msg.card}
+                              onRespond={(opts, custom, skip) => handleClarificationResponse(opts, custom, skip)}
+                              onSpeakQuestion={(text) => speak(text, true)}
                             />
                           </div>
                         )}

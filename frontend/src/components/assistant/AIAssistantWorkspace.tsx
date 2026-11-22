@@ -3,13 +3,19 @@ import {
   Bot,
   Check,
   Compass,
+  Mic,
+  MicOff,
   Send,
   ShieldCheck,
   Sparkles,
+  Volume2,
+  VolumeX,
   X,
 } from 'lucide-react';
-import type { ActionApproval, ExecutionStep, TransactionPlan } from '../../types';
+import type { ActionApproval, ClarificationCardData, ExecutionStep, TransactionPlan } from '../../types';
 import { ShadowDiffCard } from '../executions/ShadowDiffCard';
+import { ClarificationCard } from '../chat/ClarificationCard';
+import { useVoiceConversation } from '../../hooks/useVoiceConversation';
 
 interface Message {
   sender: 'user' | 'assistant';
@@ -19,6 +25,7 @@ interface Message {
   steps?: ExecutionStep[];
   approvals?: ActionApproval[];
   plan?: TransactionPlan;
+  card?: ClarificationCardData;
 }
 
 interface AssistantProps {
@@ -43,6 +50,20 @@ export const AIAssistantWorkspace: React.FC<AssistantProps> = ({
   availableRoles,
 }) => {
   const [input, setInput] = useState('');
+
+  // Voice & Speech Hook
+  const {
+    isListening,
+    isSupported: isVoiceSupported,
+    voiceReadbackEnabled,
+    setVoiceReadbackEnabled,
+    toggleListening,
+    speak,
+  } = useVoiceConversation({
+    onTranscript: (text) => {
+      setInput(text);
+    },
+  });
 
   const suggestedPromptsByRole: Record<string, string[]> = {
     personal: [
@@ -174,6 +195,21 @@ export const AIAssistantWorkspace: React.FC<AssistantProps> = ({
               </div>
             </div>
           </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setVoiceReadbackEnabled(!voiceReadbackEnabled)}
+              className={`p-2 rounded-xl transition ${
+                voiceReadbackEnabled
+                  ? 'text-purple-300 bg-purple-900/40 border border-purple-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+              title={voiceReadbackEnabled ? 'Voice readback active (click to mute)' : 'Enable voice readback'}
+            >
+              {voiceReadbackEnabled ? <Volume2 className="w-4 h-4 text-purple-400" /> : <VolumeX className="w-4 h-4" />}
+            </button>
+          </div>
         </div>
 
         {/* Message Stream */}
@@ -218,6 +254,22 @@ export const AIAssistantWorkspace: React.FC<AssistantProps> = ({
                         <ShadowDiffCard plan={msg.plan} />
                       </div>
                     )}
+
+                    {!isUser && msg.card && (
+                      <div className="mt-3 w-full">
+                        <ClarificationCard
+                          card={msg.card}
+                          onRespond={(opts, custom, skip) => {
+                            if (skip) {
+                              handleSend('skip and generate blueprint plan');
+                            } else {
+                              handleSend(custom || opts.join(', '));
+                            }
+                          }}
+                          onSpeakQuestion={(text) => speak(text, true)}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -241,10 +293,28 @@ export const AIAssistantWorkspace: React.FC<AssistantProps> = ({
             }}
             className="flex items-center gap-2"
           >
+            {isVoiceSupported && (
+              <button
+                type="button"
+                onClick={() => toggleListening()}
+                className={`p-3 rounded-xl border transition ${
+                  isListening
+                    ? 'bg-rose-500 text-white border-rose-400 animate-pulse'
+                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                }`}
+                title={isListening ? 'Stop listening' : 'Start voice input'}
+              >
+                {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              </button>
+            )}
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={`Ask LifeSync in ${activeRole} mode... (e.g. 'Plan my day', 'Break down project')`}
+              placeholder={
+                isListening
+                  ? 'Listening to your speech...'
+                  : `Ask LifeSync in ${activeRole} mode... (e.g. 'Plan my day', 'Break down project')`
+              }
               disabled={agentBusy}
               className="flex-1 px-4 py-3 rounded-xl bg-slate-900 border border-slate-800 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 outline-none"
             />

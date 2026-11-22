@@ -67,6 +67,7 @@ class AgentChatResponse(BaseModel):
     pending_approvals: List[ActionApprovalOut] = []
     latency_ms: Optional[int] = None
     transaction_plan: Optional[Dict[str, Any]] = None
+    clarification_card: Optional[Dict[str, Any]] = None
 
 
 class MemoryCreate(BaseModel):

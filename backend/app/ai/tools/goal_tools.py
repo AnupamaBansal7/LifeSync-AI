@@ -1,8 +1,9 @@
 from datetime import date
-from typing import Any, Dict
+from typing import Any, Dict, List
 import uuid
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.ai.tools.base import BaseTool
+from app.ai.tools.base import BaseTool, Reversibility
 from app.models.productivity import Goal, Milestone
 
 
@@ -22,6 +23,100 @@ class CreateGoalTool(BaseTool):
     @property
     def risk_level(self) -> str:
         return "low"
+
+    @property
+    def reversibility(self) -> Reversibility:
+        return Reversibility.REVERSIBLE
+
+    @property
+    def is_mutating(self) -> bool:
+        return True
+
+    @property
+    def parameters_schema(self) -> Dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Title of the goal"},
+                "description": {"type": "string", "description": "Detailed description or motivation"},
+                "horizon": {"type": "string", "enum": ["short_term", "long_term"], "default": "short_term"},
+                "role_context": {"type": "string", "default": "personal"},
+                "category": {"type": "string", "description": "Category such as Career, Health, Education"},
+                "target_date": {"type": "string", "description": "ISO 8601 target date (YYYY-MM-DD)"},
+                "milestones": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of key milestone titles",
+                },
+            },
+            "required": ["title"],
+        }
+
+    async def dry_run(self, db: AsyncSession, user_id: uuid.UUID, args: Dict[str, Any]) -> Dict[str, Any]:
+        title = args.get("title", "New Goal").strip()
+        horizon = args.get("horizon", "short_term")
+        milestones = args.get("milestones", [])
+        return {
+            "action_summary": f"Create goal: '{title}' ({horizon.replace('_', ' ').capitalize()})",
+            "target_entity": "Goal",
+            "before_state": {},
+            "after_state": {
+                "title": title,
+                "description": args.get("description"),
+                "horizon": horizon,
+                "role_context": args.get("role_context", "personal"),
+                "category": args.get("category"),
+                "target_date": args.get("target_date"),
+                "milestones": milestones,
+            },
+            "risk_level": "LOW",
+            "reversibility": self.reversibility.value,
+        }
+
+    async def compensate(self, db: AsyncSession, user_id: uuid.UUID, snapshot: Dict[str, Any]) -> Dict[str, Any]:
+        after = snapshot.get("after_state", {}) if isinstance(snapshot.get("after_state"), dict) else {}
+        goal_id_str = (
+            snapshot.get("created_goal_id")
+            or snapshot.get("goal_id")
+            or snapshot.get("id")
+            or after.get("goal_id")
+            or after.get("created_goal_id")
+            or after.get("id")
+        )
+        if not goal_id_str:
+            title = snapshot.get("title") or after.get("title")
+            if title:
+                res = await db.execute(select(Goal).where(Goal.title == title, Goal.user_id == user_id))
+                g = res.scalar_one_or_none()
+                if g:
+                    goal_id_str = str(g.id)
+
+        if goal_id_str:
+            try:
+                g_id = uuid.UUID(goal_id_str)
+                await db.execute(delete(Milestone).where(Milestone.goal_id == g_id))
+                await db.execute(delete(Goal).where(Goal.id == g_id, Goal.user_id == user_id))
+                await db.commit()
+                return {
+                    "success": True,
+                    "restored_entity_id": str(g_id),
+                    "details": f"Deleted goal '{g_id}' and associated milestones to revert creation.",
+                    "error": None,
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": str(e),
+                    "restored_entity_id": goal_id_str,
+                    "details": "Failed to rollback goal.",
+                }
+
+        return {
+            "success": False,
+            "error": "Goal ID not found in snapshot for compensation.",
+            "restored_entity_id": None,
+            "details": "Snapshot missing entity ID.",
+        }
 
     async def execute(self, db: AsyncSession, user_id: uuid.UUID, args: Dict[str, Any]) -> Dict[str, Any]:
         target_d = None
