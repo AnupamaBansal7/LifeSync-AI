@@ -197,15 +197,28 @@ async def get_role_aware_dashboard(
         .limit(6)
     )
     recent_runs = runs_res.scalars().all()
+    intent_to_agent = {
+        "task_management": "TaskManagementAgent",
+        "create_task": "TaskManagementAgent",
+        "update_task": "TaskManagementAgent",
+        "calendar_scheduling": "CalendarAgent",
+        "schedule_event": "CalendarAgent",
+        "email_triage": "EmailAgent",
+        "draft_email": "EmailAgent",
+        "send_email": "EmailAgent",
+        "personal_wellness": "WellnessAgent",
+        "habit_tracking": "HabitAgent",
+        "goal_setting": "GoalAgent",
+    }
     agent_activity = [
         {
             "id": str(r.id),
-            "agent_name": r.agent_name,
+            "agent_name": intent_to_agent.get(r.detected_intent, f"{r.detected_intent.replace('_', ' ').title().replace(' ', '')}Agent"),
             "status": "Waiting for Approval" if r.status == "awaiting_approval" else r.status.capitalize(),
-            "assignment": r.input_prompt[:65] + "..." if len(r.input_prompt) > 65 else r.input_prompt,
-            "started_at": r.created_at.isoformat(),
-            "completed_at": r.completed_at.isoformat() if r.completed_at else None,
-            "result_summary": r.output_summary or "Operating normally",
+            "assignment": (r.user_query[:65] + "...") if len(r.user_query or "") > 65 else (r.user_query or "Agent operation"),
+            "started_at": r.created_at.isoformat() if r.created_at else now.isoformat(),
+            "completed_at": r.updated_at.isoformat() if (r.status in ("completed", "failed") and r.updated_at) else None,
+            "result_summary": r.final_response or r.error_message or "Operating normally",
         }
         for r in recent_runs
     ]
