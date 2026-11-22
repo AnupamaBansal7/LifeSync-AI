@@ -253,6 +253,8 @@ export default function App() {
           approvals: res.data.pending_approvals,
           plan: res.data.transaction_plan,
           card: res.data.clarification_card,
+          agent_trace: res.data.agent_trace,
+          spoken_reply: res.data.spoken_reply,
         },
       ]);
       await refreshAllData(activeRole);

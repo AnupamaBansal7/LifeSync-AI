@@ -68,6 +68,16 @@ class AgentChatResponse(BaseModel):
     latency_ms: Optional[int] = None
     transaction_plan: Optional[Dict[str, Any]] = None
     clarification_card: Optional[Dict[str, Any]] = None
+    spoken_reply: Optional[str] = None
+    agent_trace: Optional[List[Dict[str, Any]]] = None
+
+
+class AgentGreetingResponse(BaseModel):
+    greeting_text: str
+    user_name: str
+    pending_tasks_count: int
+    next_event: Optional[str] = None
+    quick_suggestions: List[str] = []
 
 
 class MemoryCreate(BaseModel):

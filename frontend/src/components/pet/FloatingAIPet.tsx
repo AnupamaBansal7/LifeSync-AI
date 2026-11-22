@@ -23,11 +23,12 @@ import {
 import confetti from 'canvas-confetti';
 
 import { api } from '../../lib/api';
-import type { ActionApproval, AICoreStatus, ClarificationCardData, DashboardSummary, ExecutionStep, TransactionPlan, User } from '../../types';
+import type { ActionApproval, AgentTraceItem, AICoreStatus, ClarificationCardData, DashboardSummary, ExecutionStep, TransactionPlan, User } from '../../types';
 import type { NavTab } from '../layout/Sidebar';
 import { ShadowDiffCard } from '../executions/ShadowDiffCard';
 import { ClarificationCard } from '../chat/ClarificationCard';
-import { useVoiceConversation } from '../../hooks/useVoiceConversation';
+import { AgentCollaborationStrip } from '../chat/AgentCollaborationStrip';
+import { useSyncVoiceLoop } from '../../hooks/useSyncVoiceLoop';
 
 interface PetMessage {
   id: string;
@@ -39,6 +40,9 @@ interface PetMessage {
   approvals?: ActionApproval[];
   plan?: TransactionPlan;
   card?: ClarificationCardData;
+  agent_trace?: AgentTraceItem[];
+  spoken_reply?: string;
+  quick_suggestions?: string[];
   timestamp: Date;
   hasScreen?: boolean;
 }
@@ -163,18 +167,27 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
   const [messages, setMessages] = useState<PetMessage[]>([]);
   const [activeSpecialist, setActiveSpecialist] = useState<string>('LifeSync AI Orchestrator');
 
-  // Voice & Readback Hook
+  const [voiceReadbackEnabled, setVoiceReadbackEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('lifesync_voice_readback') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  // Hands-free Voice Loop & Speech
   const {
+    handsFreeEnabled,
+    toggleHandsFree,
     isListening,
     isSupported: isVoiceSupported,
-    voiceReadbackEnabled,
-    setVoiceReadbackEnabled,
-    toggleListening: toggleVoiceListening,
-    speak,
-  } = useVoiceConversation({
-    onTranscript: (text) => {
-      setInput(text);
-      onStatusChange?.('idle');
+    startListening,
+    stopListening,
+    speakText,
+    cancelSpeaking,
+  } = useSyncVoiceLoop({
+    onSendMessage: async (text) => {
+      await handleSend(text);
     },
   });
 
@@ -194,7 +207,37 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
     }
   }, [messages, isOpen]);
 
-  // Initial welcome message
+  // Proactive greeting on mount (once per session)
+  useEffect(() => {
+    const fetchGreeting = async () => {
+      if (!user) return;
+      const alreadyShown = sessionStorage.getItem('lifesync_greeting_shown');
+      if (alreadyShown) return;
+
+      try {
+        const res = await api.get('/agents/greeting');
+        sessionStorage.setItem('lifesync_greeting_shown', 'true');
+        const greetingData = res.data;
+        const greetingMsg: PetMessage = {
+          id: `greeting-${Date.now()}`,
+          sender: 'assistant',
+          content: greetingData.greeting_text,
+          quick_suggestions: greetingData.quick_suggestions || [],
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [greetingMsg, ...prev]);
+        if (voiceReadbackEnabled || handsFreeEnabled) {
+          speakText(greetingData.greeting_text);
+        }
+      } catch (err) {
+        console.warn('Could not fetch proactive greeting:', err);
+      }
+    };
+
+    fetchGreeting();
+  }, [user, voiceReadbackEnabled, handsFreeEnabled, speakText]);
+
+  // Fallback initial welcome message if no greeting fetched yet
   useEffect(() => {
     if (messages.length === 0 && user) {
       const firstName = user.full_name?.split(' ')[0] || 'there';
@@ -207,18 +250,19 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
         },
       ]);
     }
-  }, [user, activeRole]);
+  }, [user, activeRole, messages.length]);
 
   const toggleListening = () => {
     if (!isVoiceSupported) {
       alert('Speech recognition is not supported in this browser. Please try Google Chrome or Edge.');
       return;
     }
-    toggleVoiceListening();
-    if (!isListening) {
-      onStatusChange?.('listening');
-    } else {
+    if (isListening) {
+      stopListening();
       onStatusChange?.('idle');
+    } else {
+      startListening();
+      onStatusChange?.('listening');
     }
   };
 
@@ -344,6 +388,8 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
         approvals: res.data.pending_approvals,
         plan: res.data.transaction_plan,
         card: res.data.clarification_card,
+        agent_trace: res.data.agent_trace,
+        spoken_reply: res.data.spoken_reply,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, assistantMsg]);
@@ -352,8 +398,9 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
         setActiveIntakeSessionId(res.data.clarification_card.session_id);
       }
 
-      if (voiceReadbackEnabled && res.data.reply) {
-        speak(res.data.reply);
+      const textToSpeak = res.data.spoken_reply || res.data.reply;
+      if ((voiceReadbackEnabled || handsFreeEnabled) && textToSpeak) {
+        speakText(textToSpeak);
       }
 
       // Refresh parent app view data (tasks, habits, calendar, etc.)
@@ -403,7 +450,7 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
           };
           setMessages((prev) => [...prev, cardMsg]);
           if (voiceReadbackEnabled) {
-            speak(res.data.reply || res.data.clarification_card.question);
+            speakText(res.data.reply || res.data.clarification_card.question);
           }
         } else if (res.data.transaction_plan) {
           const planMsg: PetMessage = {
@@ -416,7 +463,7 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
           setMessages((prev) => [...prev, planMsg]);
           setActiveIntakeSessionId(null);
           if (voiceReadbackEnabled) {
-            speak('Your blueprint plan has been simulated. You can review the diff and apply or reject it.');
+            speakText('Your blueprint plan has been simulated. You can review the diff and apply or reject it.');
           }
         }
         if (onRefreshData) {
@@ -583,6 +630,20 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
                     Screen Shared
                   </span>
                 )}
+                {/* Hands-Free Voice Mode Toggle */}
+                <button
+                  type="button"
+                  onClick={toggleHandsFree}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold flex items-center gap-1 transition ${
+                    handsFreeEnabled
+                      ? 'bg-purple-600/30 text-purple-300 border border-purple-500/50 shadow-sm shadow-purple-500/20'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800'
+                  }`}
+                  title={handsFreeEnabled ? 'Hands-Free Voice Active (click to disable)' : 'Enable Hands-Free Voice Mode'}
+                >
+                  <Mic className={`w-3 h-3 ${handsFreeEnabled ? 'text-purple-400 animate-pulse' : ''}`} />
+                  <span>Hands-Free</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => setVoiceReadbackEnabled(!voiceReadbackEnabled)}
@@ -684,7 +745,29 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
                       </div>
                     ) : (
                       <div className="space-y-3">
+                        {/* Agent Collaboration Trace Strip */}
+                        {msg.agent_trace && msg.agent_trace.length > 0 && (
+                          <AgentCollaborationStrip trace={msg.agent_trace} />
+                        )}
+
                         <MarkdownContent content={msg.content} />
+
+                        {/* Proactive Quick Suggestion Chips */}
+                        {msg.quick_suggestions && msg.quick_suggestions.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {msg.quick_suggestions.map((sug, sIdx) => (
+                              <button
+                                key={sIdx}
+                                onClick={() => handleSend(sug)}
+                                disabled={busy}
+                                className="px-2.5 py-1 rounded-full bg-purple-900/40 hover:bg-purple-800/60 text-purple-200 border border-purple-500/30 text-[10px] font-medium transition cursor-pointer flex items-center gap-1 shadow-sm"
+                              >
+                                <Sparkles className="w-2.5 h-2.5 text-purple-400" />
+                                {sug}
+                              </button>
+                            ))}
+                          </div>
+                        )}
 
                         {/* Transparent Step Logs */}
                         {msg.steps && msg.steps.length > 0 && (
@@ -766,7 +849,7 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
                             <ClarificationCard
                               card={msg.card}
                               onRespond={(opts, custom, skip) => handleClarificationResponse(opts, custom, skip)}
-                              onSpeakQuestion={(text) => speak(text, true)}
+                              onSpeakQuestion={(text) => speakText(text)}
                             />
                           </div>
                         )}
@@ -844,7 +927,10 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
                 <input
                   type="text"
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                  onChange={(e) => {
+                    cancelSpeaking();
+                    setInput(e.target.value);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
@@ -852,7 +938,9 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
                     }
                   }}
                   placeholder={
-                    isListening
+                    handsFreeEnabled
+                      ? 'Hands-Free active: Speak or type anytime...'
+                      : isListening
                       ? 'Listening to your voice...'
                       : isScreenSharing
                       ? 'Ask about what is on your screen...'

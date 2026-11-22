@@ -440,3 +440,18 @@ export interface ClarificationCardData {
   can_skip_and_generate: boolean;
 }
 
+export interface AgentTraceItem {
+  agent: string;
+  status: string;
+  detail?: string;
+}
+
+export interface AgentGreetingResponse {
+  greeting_text: string;
+  user_name: string;
+  pending_tasks_count: number;
+  next_event?: string | null;
+  quick_suggestions: string[];
+}
+
+

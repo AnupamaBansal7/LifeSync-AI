@@ -46,6 +46,8 @@ async def chat_with_agents(
     )
     plan_dict = getattr(run, "transaction_plan", None)
     card_dict = getattr(run, "clarification_card", None)
+    spoken_reply = getattr(run, "spoken_reply", None)
+    agent_trace = getattr(run, "agent_trace", None)
     return AgentChatResponse(
         conversation_id=conv.id,
         agent_run_id=run.id,
@@ -57,6 +59,8 @@ async def chat_with_agents(
         latency_ms=run.latency_ms,
         transaction_plan=plan_dict,
         clarification_card=card_dict,
+        spoken_reply=spoken_reply,
+        agent_trace=agent_trace,
     )
 
 

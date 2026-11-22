@@ -12,9 +12,10 @@ import {
   VolumeX,
   X,
 } from 'lucide-react';
-import type { ActionApproval, ClarificationCardData, ExecutionStep, TransactionPlan } from '../../types';
+import type { ActionApproval, AgentTraceItem, ClarificationCardData, ExecutionStep, TransactionPlan } from '../../types';
 import { ShadowDiffCard } from '../executions/ShadowDiffCard';
 import { ClarificationCard } from '../chat/ClarificationCard';
+import { AgentCollaborationStrip } from '../chat/AgentCollaborationStrip';
 import { useVoiceConversation } from '../../hooks/useVoiceConversation';
 
 interface Message {
@@ -26,6 +27,8 @@ interface Message {
   approvals?: ActionApproval[];
   plan?: TransactionPlan;
   card?: ClarificationCardData;
+  agent_trace?: AgentTraceItem[];
+  spoken_reply?: string;
 }
 
 interface AssistantProps {
@@ -239,6 +242,9 @@ export const AIAssistantWorkspace: React.FC<AssistantProps> = ({
                         : 'bg-slate-950/90 border border-slate-800 text-slate-200 rounded-bl-sm shadow-md'
                     }`}
                   >
+                    {!isUser && msg.agent_trace && msg.agent_trace.length > 0 && (
+                      <AgentCollaborationStrip trace={msg.agent_trace} />
+                    )}
                     <div className="whitespace-pre-wrap">{msg.content}</div>
 
                     {!isUser && msg.latency && (

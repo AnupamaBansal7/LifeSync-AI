@@ -535,6 +535,59 @@ async def run_multi_agent_pipeline(
         await db.commit()
         return conversation, agent_run, steps, created_approvals
 
+    # 4. Supervisor Multi-Agent Coordination
+    from app.services.supervisor_agent import SupervisorAgent
+    sup_ctx = await SupervisorAgent.build_context(
+        db=db,
+        user=user,
+        conversation_history=[{"sender": m.sender, "content": m.content} for m in history_messages],
+        active_role=active_role,
+        auto_approve_low_risk=auto_approve_low_risk,
+    )
+    sup_res = await SupervisorAgent.coordinate(
+        db=db,
+        context=sup_ctx,
+        user_message=user_message,
+        screen_context=screen_context,
+    )
+
+    if sup_res and sup_res.get("mode") in ["VOICE_APPROVAL", "MULTI_AGENT_PLAN", "DIRECT_EXECUTION"]:
+        agent_run.final_response = sup_res.get("display_reply", "")
+        setattr(agent_run, "spoken_reply", sup_res.get("spoken_reply"))
+        setattr(agent_run, "agent_trace", sup_res.get("agent_trace", []))
+        if sup_res.get("transaction_plan"):
+            setattr(agent_run, "transaction_plan", sup_res["transaction_plan"])
+        agent_run.status = sup_res.get("status", "completed")
+        agent_run.latency_ms = int((time.perf_counter() - t0) * 1000)
+
+        for trace_item in sup_res.get("agent_trace", []):
+            st = AgentExecutionStep(
+                agent_run_id=agent_run.id,
+                step_order=step_counter,
+                agent_name=trace_item.get("agent", "Sync Supervisor"),
+                tool_name=trace_item.get("agent", "supervisor").lower().replace(" ", "_"),
+                input_summary={"query": user_message[:80]},
+                output_summary={"detail": trace_item.get("detail")},
+                status=trace_item.get("status", "completed"),
+            )
+            db.add(st)
+            steps.append(st)
+            step_counter += 1
+
+        db.add(Message(
+            conversation_id=conversation.id,
+            user_id=user.id,
+            sender="assistant",
+            content=sup_res["display_reply"],
+            agent_run_id=agent_run.id,
+            structured_payload={
+                "spoken_reply": sup_res.get("spoken_reply"),
+                "agent_trace": sup_res.get("agent_trace"),
+            }
+        ))
+        await db.commit()
+        return conversation, agent_run, steps, created_approvals
+
     # 4. Attempt Dynamic LLM Tool Calling (Online Path)
     provider = ProviderRegistry.get_provider()
     tool_defs = get_openai_tool_definitions()
