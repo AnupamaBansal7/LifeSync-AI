@@ -278,6 +278,51 @@ export interface DashboardSummary {
     }>;
   };
   role_highlights: Record<string, any>;
+  user_name?: string;
+  user_timezone?: string;
+  email_intelligence?: {
+    unread_count: number;
+    important_count: number;
+    unread_important_messages: Array<{
+      id: string;
+      sender: string;
+      sender_name?: string;
+      subject: string;
+      date: string;
+      snippet: string;
+    }>;
+    emails_needing_reply: Array<{
+      id: string;
+      sender: string;
+      subject: string;
+      snippet: string;
+    }>;
+    extracted_deadlines: Array<{
+      subject: string;
+      deadline: string;
+      sender: string;
+      urgency: string;
+    }>;
+    connected_provider?: string;
+    account_email?: string;
+  };
+  agent_activity?: Array<{
+    id: string;
+    agent_name: string;
+    status: string;
+    assignment: string;
+    started_at: string;
+    completed_at?: string;
+    result_summary: string;
+  }>;
+  proactive_insights?: Array<{
+    type: 'deadline' | 'workload' | 'email' | 'habit' | 'calendar';
+    urgency: 'low' | 'medium' | 'high' | 'urgent';
+    title: string;
+    description: string;
+    action_text?: string;
+    tab?: string;
+  }>;
   recent_notifications: Array<{
     id: string;
     title: string;
@@ -288,13 +333,41 @@ export interface DashboardSummary {
 }
 
 export type AICoreStatus =
+  | 'initializing'
   | 'idle'
+  | 'listening'
   | 'thinking'
+  | 'planning'
   | 'processing'
   | 'executing'
   | 'awaiting_approval'
   | 'completed'
   | 'error';
+
+export interface EmailAttachment {
+  name: string;
+  size: string;
+  type: string;
+}
+
+export interface EmailMessage {
+  id: string;
+  thread_id?: string;
+  sender: string;
+  sender_name?: string;
+  recipient: string;
+  subject: string;
+  snippet: string;
+  body?: string;
+  date: string;
+  is_read: boolean;
+  is_starred: boolean;
+  folder: 'inbox' | 'important' | 'unread' | 'sent' | 'drafts' | 'archived';
+  labels: string[];
+  has_attachments: boolean;
+  attachments?: EmailAttachment[];
+  source_provider: 'google' | 'microsoft' | 'simulation';
+}
 
 export interface Project {
   id: string;

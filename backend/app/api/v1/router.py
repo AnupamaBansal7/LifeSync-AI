@@ -7,6 +7,7 @@ from app.api.v1 import (
     automations,
     calendar,
     dashboard,
+    email,
     goals_habits,
     integrations,
     proactive,
@@ -24,6 +25,7 @@ api_router.include_router(dashboard.router)
 api_router.include_router(tasks.router)
 api_router.include_router(goals_habits.router)
 api_router.include_router(calendar.router)
+api_router.include_router(email.router)
 api_router.include_router(agents.router)
 api_router.include_router(agents_memory.router)
 api_router.include_router(automations.router)

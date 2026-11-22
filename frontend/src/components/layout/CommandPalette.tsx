@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Bell,
   Bot,
   Brain,
   Calendar,
@@ -7,6 +8,7 @@ import {
   Compass,
   Flame,
   LayoutDashboard,
+  Mail,
   PieChart,
   Search,
   Settings,
@@ -52,12 +54,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   const actions = [
     { label: 'Go to Command Center', icon: LayoutDashboard, action: () => onSelectTab('overview') },
+    { label: 'Open Email Hub & Inbox', icon: Mail, action: () => onSelectTab('email') },
     { label: 'Chat with AI Assistant', icon: Sparkles, action: () => onSelectTab('assistant') },
     { label: 'View AI Agents Ecosystem', icon: Bot, action: () => onSelectTab('agents') },
     { label: 'View Tasks & Kanban Board', icon: CheckCircle2, action: () => onSelectTab('tasks') },
     { label: 'View Calendar & Time Blocks', icon: Calendar, action: () => onSelectTab('calendar') },
     { label: 'View Goals & Roadmaps', icon: Target, action: () => onSelectTab('goals') },
     { label: 'Check Habits & Streaks', icon: Flame, action: () => onSelectTab('habits') },
+    { label: 'View Notifications & Alerts', icon: Bell, action: () => onSelectTab('notifications') },
     { label: 'Manage Automations & Workflows', icon: Workflow, action: () => onSelectTab('automations') },
     { label: 'Search Semantic Memory & RAG', icon: Brain, action: () => onSelectTab('memory') },
     { label: 'View Productivity Analytics', icon: PieChart, action: () => onSelectTab('analytics') },

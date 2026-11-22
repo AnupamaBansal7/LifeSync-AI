@@ -9,14 +9,20 @@ interface FallbackProps {
 export const AICoreFallback: React.FC<FallbackProps> = ({ status, size = 180 }) => {
   const getColors = () => {
     switch (status) {
+      case 'initializing':
+        return { ring: 'border-cyan-400', glow: 'from-cyan-500/40 via-blue-600/30 to-slate-900/10', core: 'bg-cyan-300' };
+      case 'listening':
+        return { ring: 'border-teal-400', glow: 'from-teal-500/40 via-emerald-600/30 to-slate-900/10', core: 'bg-teal-300' };
       case 'thinking':
         return { ring: 'border-violet-500', glow: 'from-violet-600/40 via-purple-600/30 to-indigo-900/10', core: 'bg-violet-400' };
+      case 'planning':
+        return { ring: 'border-purple-400', glow: 'from-purple-500/40 via-violet-600/30 to-slate-900/10', core: 'bg-purple-300' };
       case 'processing':
         return { ring: 'border-cyan-400', glow: 'from-cyan-500/40 via-blue-600/30 to-slate-900/10', core: 'bg-cyan-300' };
       case 'executing':
         return { ring: 'border-amber-400', glow: 'from-amber-500/40 via-orange-600/30 to-slate-900/10', core: 'bg-amber-300' };
       case 'awaiting_approval':
-        return { ring: 'border-amber-300', glow: 'from-amber-400/50 via-yellow-500/30 to-slate-900/10', core: 'bg-yellow-300' };
+        return { ring: 'border-yellow-300', glow: 'from-amber-400/50 via-yellow-500/30 to-slate-900/10', core: 'bg-yellow-300' };
       case 'completed':
         return { ring: 'border-emerald-400', glow: 'from-emerald-500/40 via-teal-600/30 to-slate-900/10', core: 'bg-emerald-300' };
       case 'error':
@@ -58,7 +64,7 @@ export const AICoreFallback: React.FC<FallbackProps> = ({ status, size = 180 }) 
       </div>
 
       {/* Status Badge */}
-      <div className="absolute -bottom-2 px-2.5 py-0.5 rounded-full bg-slate-900/90 border border-slate-700 text-[10px] font-mono uppercase tracking-wider text-slate-300 shadow">
+      <div className="absolute -bottom-2 px-3 py-1 rounded-full bg-slate-900/90 border border-slate-700 text-[10px] font-mono uppercase tracking-wider text-slate-300 shadow">
         {status.replace('_', ' ')}
       </div>
     </div>

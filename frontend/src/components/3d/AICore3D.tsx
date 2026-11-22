@@ -8,6 +8,7 @@ interface AICore3DProps {
   size?: number;
   className?: string;
   onClick?: () => void;
+  onResetStatus?: () => void;
 }
 
 export const AICore3D: React.FC<AICore3DProps> = ({
@@ -15,6 +16,7 @@ export const AICore3D: React.FC<AICore3DProps> = ({
   size = 220,
   className = '',
   onClick,
+  onResetStatus,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [webGLFailed, setWebGLFailed] = useState(false);
@@ -23,7 +25,16 @@ export const AICore3D: React.FC<AICore3DProps> = ({
 
   useEffect(() => {
     statusRef.current = status;
-  }, [status]);
+    // Auto-recovery timer for error state so the core doesn't get permanently stuck in error
+    if (status === 'error') {
+      const timer = setTimeout(() => {
+        if (onResetStatus) {
+          onResetStatus();
+        }
+      }, 4500);
+      return () => clearTimeout(timer);
+    }
+  }, [status, onResetStatus]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -178,10 +189,25 @@ export const AICore3D: React.FC<AICore3DProps> = ({
       let targetEmissive = new THREE.Color(0x4f46e5);
 
       switch (currentStatus) {
+        case 'initializing':
+          speedMult = 0.8;
+          targetCoreColor.setHex(0x38bdf8);
+          targetEmissive.setHex(0x0284c7);
+          break;
+        case 'listening':
+          speedMult = 1.6;
+          targetCoreColor.setHex(0x2dd4bf);
+          targetEmissive.setHex(0x0d9488);
+          break;
         case 'thinking':
           speedMult = 2.4;
           targetCoreColor.setHex(0x8b5cf6);
           targetEmissive.setHex(0x7c3aed);
+          break;
+        case 'planning':
+          speedMult = 2.2;
+          targetCoreColor.setHex(0xa855f7);
+          targetEmissive.setHex(0x9333ea);
           break;
         case 'processing':
           speedMult = 2.0;
@@ -204,7 +230,7 @@ export const AICore3D: React.FC<AICore3DProps> = ({
           targetEmissive.setHex(0x059669);
           break;
         case 'error':
-          speedMult = 1.8;
+          speedMult = 1.4;
           targetCoreColor.setHex(0xf43f5e);
           targetEmissive.setHex(0xe11d48);
           break;
@@ -279,15 +305,40 @@ export const AICore3D: React.FC<AICore3DProps> = ({
     return <AICoreFallback status={status} size={size} />;
   }
 
+  const getStatusColor = () => {
+    switch (status) {
+      case 'listening':
+        return 'border-teal-500/80 text-teal-300 shadow-teal-500/20';
+      case 'thinking':
+      case 'planning':
+        return 'border-purple-500/80 text-purple-300 shadow-purple-500/20';
+      case 'executing':
+      case 'processing':
+        return 'border-amber-500/80 text-amber-300 shadow-amber-500/20';
+      case 'awaiting_approval':
+        return 'border-yellow-500/80 text-yellow-300 shadow-yellow-500/20';
+      case 'completed':
+        return 'border-emerald-500/80 text-emerald-300 shadow-emerald-500/20';
+      case 'error':
+        return 'border-rose-500/80 text-rose-300 shadow-rose-500/20';
+      case 'initializing':
+        return 'border-cyan-500/80 text-cyan-300 shadow-cyan-500/20';
+      default:
+        return 'border-indigo-500/80 text-indigo-300 shadow-indigo-500/20';
+    }
+  };
+
   return (
     <div
       ref={containerRef}
       onClick={onClick}
       className={`relative flex items-center justify-center cursor-pointer transition-transform hover:scale-105 ${className}`}
       style={{ width: size, height: size }}
-      title={`LifeSync 3D AI Core - Status: ${status}`}
+      title={`LifeSync 3D AI Core - Status: ${status} (Click to open AI Assistant)`}
     >
-      <div className="absolute -bottom-1 px-2.5 py-0.5 rounded-full bg-slate-900/80 border border-slate-700/80 text-[10px] font-mono tracking-wider text-slate-300 backdrop-blur-md shadow-md pointer-events-none">
+      <div
+        className={`absolute -bottom-1 px-3 py-1 rounded-full bg-slate-950/90 border text-[10px] font-mono tracking-wider backdrop-blur-md shadow-lg pointer-events-none transition-colors duration-300 ${getStatusColor()}`}
+      >
         {status.replace('_', ' ').toUpperCase()}
       </div>
     </div>

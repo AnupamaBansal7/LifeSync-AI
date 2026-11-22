@@ -21,7 +21,7 @@ import {
 import confetti from 'canvas-confetti';
 
 import { api } from '../../lib/api';
-import type { ActionApproval, AICoreStatus, ExecutionStep, User } from '../../types';
+import type { ActionApproval, AICoreStatus, DashboardSummary, ExecutionStep, User } from '../../types';
 import type { NavTab } from '../layout/Sidebar';
 
 interface PetMessage {
@@ -46,6 +46,7 @@ interface FloatingAIPetProps {
   onDecideApproval?: (id: string, decision: 'approved' | 'rejected') => Promise<void>;
   aiCoreStatus?: AICoreStatus;
   onStatusChange?: (status: AICoreStatus) => void;
+  summary?: DashboardSummary | null;
 }
 
 // Markdown Formatter for Assistant Outputs
@@ -145,6 +146,7 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
   onDecideApproval,
   aiCoreStatus: _aiCoreStatus = 'idle',
   onStatusChange,
+  summary,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -201,14 +203,17 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
         const transcript = e.results[0][0].transcript;
         setInput(transcript);
         setIsListening(false);
+        onStatusChange?.('idle');
       };
 
       rec.onerror = () => {
         setIsListening(false);
+        onStatusChange?.('idle');
       };
 
       rec.onend = () => {
         setIsListening(false);
+        onStatusChange?.('idle');
       };
 
       recognitionRef.current = rec;
@@ -224,12 +229,15 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
     if (isListening) {
       recognitionRef.current.stop();
       setIsListening(false);
+      onStatusChange?.('idle');
     } else {
       setIsListening(true);
+      onStatusChange?.('listening');
       try {
         recognitionRef.current.start();
       } catch {
         setIsListening(false);
+        onStatusChange?.('idle');
       }
     }
   };
@@ -557,6 +565,31 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
                   className="px-2 py-0.5 rounded bg-rose-500/20 border border-rose-500/40 text-rose-300 text-[10px] font-semibold hover:bg-rose-500/30 transition"
                 >
                   Stop Sharing
+                </button>
+              </div>
+            )}
+
+            {/* Proactive Suggestion Banner */}
+            {summary && ((summary.metrics?.overdue_tasks ?? 0) > 0 || (summary.email_intelligence?.unread_count ?? 0) > 0) && (
+              <div className="px-3.5 py-2 bg-gradient-to-r from-amber-950/40 via-indigo-950/40 to-slate-950/60 border-b border-amber-500/30 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 truncate pr-2">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0 animate-pulse" />
+                  <span className="text-[11px] text-amber-200 truncate">
+                    {(summary.metrics?.overdue_tasks ?? 0) > 0
+                      ? `${summary.metrics.overdue_tasks} overdue tasks & ${summary.email_intelligence?.unread_count || 0} unread emails need review`
+                      : `${summary.email_intelligence?.unread_count || 0} unread emails waiting in inbox`}
+                  </span>
+                </div>
+                <button
+                  onClick={() =>
+                    handleSend(
+                      'Sync, help me address my priority items: create an actionable schedule for my overdue tasks and unread messages.'
+                    )
+                  }
+                  disabled={busy}
+                  className="shrink-0 px-2 py-0.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-semibold text-[10px] border border-amber-500/40 transition cursor-pointer"
+                >
+                  Draft Plan
                 </button>
               </div>
             )}

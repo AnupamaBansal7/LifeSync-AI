@@ -49,6 +49,13 @@ KNOWN_INTEGRATIONS = [
         "details": "Requires Gmail and Google Calendar OAuth permissions.",
     },
     {
+        "service": "microsoft",
+        "name": "Microsoft Outlook & Calendar",
+        "category": "Communication & Calendar",
+        "description": "Access Outlook email messages, send replies, and manage Microsoft 365 calendar events.",
+        "details": "Requires Microsoft Graph Mail.ReadWrite and Calendars.ReadWrite OAuth permissions.",
+    },
+    {
         "service": "ollama",
         "name": "Ollama Local LLM Endpoint",
         "category": "AI Engine",
@@ -105,6 +112,8 @@ async def list_integrations(
         auth_link = None
         if srv == "google" and current_status != "connected":
             auth_link = IntegrationsService.get_google_auth_url(state=str(current_user.id))
+        elif srv == "microsoft" and current_status != "connected":
+            auth_link = IntegrationsService.get_microsoft_auth_url(state=str(current_user.id))
 
         output.append(
             IntegrationStatusOut(
@@ -147,6 +156,33 @@ async def handle_google_oauth_callback(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=result.get("error", "OAuth exchange failed"),
+        )
+    return result
+
+
+@router.post("/microsoft/auth-url")
+async def get_microsoft_auth_url(
+    current_user: User = Depends(get_current_user),
+):
+    url = IntegrationsService.get_microsoft_auth_url(state=str(current_user.id))
+    return {"auth_url": url}
+
+
+@router.post("/microsoft/callback")
+async def handle_microsoft_oauth_callback(
+    payload: OAuthCallbackRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await IntegrationsService.exchange_microsoft_code(
+        db=db,
+        user_id=current_user.id,
+        code=payload.code,
+    )
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result.get("error", "Microsoft OAuth exchange failed"),
         )
     return result
 

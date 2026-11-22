@@ -272,18 +272,16 @@ export const AutomationsView: React.FC<AutomationsViewProps> = ({
         <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-slate-900 border border-slate-800">
           <button
             onClick={() => setActiveTab('rules')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
-              activeTab === 'rules' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
-            }`}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${activeTab === 'rules' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+              }`}
           >
             <Zap className="w-3.5 h-3.5" />
             <span>Active Rules</span>
           </button>
           <button
             onClick={() => setActiveTab('visual_builder')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
-              activeTab === 'visual_builder' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
-            }`}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${activeTab === 'visual_builder' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+              }`}
           >
             <Layers className="w-3.5 h-3.5" />
             <span>Visual DAG Studio</span>
@@ -293,9 +291,8 @@ export const AutomationsView: React.FC<AutomationsViewProps> = ({
               setActiveTab('system_health');
               fetchHealth();
             }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
-              activeTab === 'system_health' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
-            }`}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${activeTab === 'system_health' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+              }`}
           >
             <Activity className="w-3.5 h-3.5" />
             <span>System Diagnostics</span>
@@ -409,11 +406,10 @@ export const AutomationsView: React.FC<AutomationsViewProps> = ({
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-sm text-white">{rule.name}</span>
                         <span
-                          className={`text-[9px] font-mono px-2 py-0.5 rounded uppercase font-bold ${
-                            rule.is_active
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                              : 'bg-slate-800 text-slate-500'
-                          }`}
+                          className={`text-[9px] font-mono px-2 py-0.5 rounded uppercase font-bold ${rule.is_active
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            : 'bg-slate-800 text-slate-500'
+                            }`}
                         >
                           {rule.is_active ? 'ACTIVE' : 'PAUSED'}
                         </span>
@@ -450,11 +446,10 @@ export const AutomationsView: React.FC<AutomationsViewProps> = ({
 
                       <button
                         onClick={() => onToggleRule(rule.id, !rule.is_active)}
-                        className={`p-2 rounded-xl border transition cursor-pointer ${
-                          rule.is_active
-                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                            : 'bg-slate-950 border-slate-800 text-slate-500'
-                        }`}
+                        className={`p-2 rounded-xl border transition cursor-pointer ${rule.is_active
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                          : 'bg-slate-950 border-slate-800 text-slate-500'
+                          }`}
                         title={rule.is_active ? 'Pause Rule' : 'Activate Rule'}
                       >
                         <Power className="w-4 h-4" />
@@ -551,17 +546,16 @@ export const AutomationsView: React.FC<AutomationsViewProps> = ({
                 <div className="p-5 rounded-3xl bg-slate-900/80 border border-slate-800 hover:border-indigo-500/50 transition backdrop-blur-xl shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex items-start gap-4">
                     <div
-                      className={`w-9 h-9 rounded-2xl flex items-center justify-center font-bold text-xs flex-shrink-0 ${
-                        node.type === 'trigger'
-                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                          : node.type === 'ai_agent'
+                      className={`w-9 h-9 rounded-2xl flex items-center justify-center font-bold text-xs flex-shrink-0 ${node.type === 'trigger'
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        : node.type === 'ai_agent'
                           ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
                           : node.type === 'condition'
-                          ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                          : node.type === 'approval'
-                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                      }`}
+                            ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                            : node.type === 'approval'
+                              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                              : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                        }`}
                     >
                       {idx + 1}
                     </div>
@@ -716,11 +710,10 @@ export const AutomationsView: React.FC<AutomationsViewProps> = ({
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-white">Google Workspace</span>
                   <span
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                      systemHealth.components.google_workspace.connected
-                        ? 'bg-emerald-500/20 text-emerald-300'
-                        : 'bg-slate-800 text-slate-400'
-                    }`}
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${systemHealth.components.google_workspace.connected
+                      ? 'bg-emerald-500/20 text-emerald-300'
+                      : 'bg-slate-800 text-slate-400'
+                      }`}
                   >
                     {systemHealth.components.google_workspace.connected ? 'CONNECTED' : 'STANDBY / MOCK'}
                   </span>

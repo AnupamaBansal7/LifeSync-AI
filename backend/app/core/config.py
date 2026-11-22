@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str = ""
     GOOGLE_REDIRECT_URI: str = "http://localhost:5173/integrations/callback"
 
+    # External Integrations (Microsoft Outlook & Graph)
+    MICROSOFT_CLIENT_ID: str = ""
+    MICROSOFT_CLIENT_SECRET: str = ""
+    MICROSOFT_REDIRECT_URI: str = "http://localhost:5173/integrations/callback"
+
 
 @lru_cache
 def get_settings() -> Settings:

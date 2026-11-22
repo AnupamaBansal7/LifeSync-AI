@@ -159,11 +159,109 @@ async def get_role_aware_dashboard(
             "focus_recommendation": "Keep momentum with early morning habit completion and clear 1 major milestone today.",
         }
 
-    greeting = "Good evening" if now.hour >= 18 else "Good afternoon" if now.hour >= 12 else "Good morning"
+    # Timezone-aware greeting
+    try:
+        from zoneinfo import ZoneInfo
+        user_tz_str = (
+            current_user.preferences.timezone
+            if current_user.preferences and current_user.preferences.timezone
+            else "UTC"
+        )
+        user_tz = ZoneInfo(user_tz_str)
+        user_now = datetime.now(user_tz)
+    except Exception:
+        user_now = datetime.now(timezone.utc)
+        user_tz_str = "UTC"
+
+    hour = user_now.hour
+    if 5 <= hour < 12:
+        greeting = "Good morning"
+    elif 12 <= hour < 17:
+        greeting = "Good afternoon"
+    elif 17 <= hour < 22:
+        greeting = "Good evening"
+    else:
+        greeting = "Good night"
+
+    user_display_name = current_user.full_name if current_user.full_name and current_user.full_name.strip() else current_user.email.split('@')[0].capitalize()
+
+    # Real Email Intelligence Summary
+    from app.services.integrations_service import IntegrationsService
+    email_intelligence = await IntegrationsService.get_email_intelligence_summary(db, current_user.id)
+
+    # Real Agent Activity
+    runs_res = await db.execute(
+        select(AgentRun)
+        .where(AgentRun.user_id == current_user.id)
+        .order_by(AgentRun.created_at.desc())
+        .limit(6)
+    )
+    recent_runs = runs_res.scalars().all()
+    agent_activity = [
+        {
+            "id": str(r.id),
+            "agent_name": r.agent_name,
+            "status": "Waiting for Approval" if r.status == "awaiting_approval" else r.status.capitalize(),
+            "assignment": r.input_prompt[:65] + "..." if len(r.input_prompt) > 65 else r.input_prompt,
+            "started_at": r.created_at.isoformat(),
+            "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+            "result_summary": r.output_summary or "Operating normally",
+        }
+        for r in recent_runs
+    ]
+    if not agent_activity:
+        agent_activity = [
+            {"id": "ag-1", "agent_name": "PersonalAssistantAgent", "status": "Idle", "assignment": "Standing by for user instructions", "started_at": now.isoformat(), "result_summary": "Ready"},
+            {"id": "ag-2", "agent_name": "EmailAgent", "status": "Idle", "assignment": "Monitoring inbox for deadlines and priority updates", "started_at": now.isoformat(), "result_summary": "Ready"},
+            {"id": "ag-3", "agent_name": "TaskManagementAgent", "status": "Idle", "assignment": "Tracking active task deadlines and backlog velocity", "started_at": now.isoformat(), "result_summary": "Ready"},
+            {"id": "ag-4", "agent_name": "CalendarAgent", "status": "Idle", "assignment": "Analyzing daily focus blocks and schedule conflicts", "started_at": now.isoformat(), "result_summary": "Ready"},
+        ]
+
+    # Proactive Insights (Grounded in real user metrics)
+    proactive_insights = []
+    if overdue_tasks:
+        proactive_insights.append({
+            "type": "deadline",
+            "urgency": "urgent",
+            "title": f"{len(overdue_tasks)} task{'s are' if len(overdue_tasks) > 1 else ' is'} past deadline",
+            "description": f"Prioritize '{overdue_tasks[0].title}' to keep your delivery schedule on track.",
+            "action_text": "Reschedule Task",
+            "tab": "tasks",
+        })
+    if len(today_priorities) >= 4:
+        proactive_insights.append({
+            "type": "workload",
+            "urgency": "high",
+            "title": "High task workload scheduled today",
+            "description": f"You have {len(today_priorities)} high-priority tasks. Ask Sync to reprioritize or schedule focus blocks.",
+            "action_text": "Optimize Schedule",
+            "tab": "calendar",
+        })
+    if email_intelligence.get("unread_count", 0) > 0:
+        proactive_insights.append({
+            "type": "email",
+            "urgency": "medium",
+            "title": f"{email_intelligence.get('unread_count')} unread email{'s' if email_intelligence.get('unread_count') > 1 else ''} in inbox",
+            "description": "Messages regarding placement drives and project reviews need attention.",
+            "action_text": "Open Email Hub",
+            "tab": "email",
+        })
+    if habits and len(completed_habit_ids) < len(habits):
+        missed_count = len(habits) - len(completed_habit_ids)
+        proactive_insights.append({
+            "type": "habit",
+            "urgency": "medium",
+            "title": f"{missed_count} habit{'s' if missed_count > 1 else ''} left for today",
+            "description": "Log your habits before evening to maintain your consistency streak.",
+            "action_text": "View Habits",
+            "tab": "habits",
+        })
 
     return {
-        "greeting": f"{greeting}, {current_user.full_name}",
-        "current_time_iso": now.isoformat(),
+        "greeting": f"{greeting}, {user_display_name}",
+        "user_name": user_display_name,
+        "current_time_iso": user_now.isoformat(),
+        "user_timezone": user_tz_str,
         "active_role": active_role,
         "productivity_score": final_score,
         "metrics": {
@@ -177,6 +275,7 @@ async def get_role_aware_dashboard(
             "upcoming_events_count": len(upcoming_events),
             "pending_approvals_count": len(pending_approvals),
             "unread_notifications_count": len(unread_notifications),
+            "unread_emails_count": email_intelligence.get("unread_count", 0),
         },
         "today_priorities": [
             {
@@ -215,10 +314,13 @@ async def get_role_aware_dashboard(
             for g in goals
         ],
         "daily_plan": {
-            "summary": latest_plan.summary if latest_plan else "No daily plan drafted yet. Ask the planning agent to plan your day.",
+            "summary": latest_plan.summary if latest_plan else "No daily plan drafted yet. Ask Sync to plan your day.",
             "blocks": latest_plan.schedule_blocks if latest_plan else [],
         },
         "role_highlights": role_highlights,
+        "email_intelligence": email_intelligence,
+        "agent_activity": agent_activity,
+        "proactive_insights": proactive_insights,
         "recent_notifications": [
             {"id": str(n.id), "title": n.title, "message": n.message, "category": n.category, "created_at": n.created_at.isoformat()}
             for n in unread_notifications

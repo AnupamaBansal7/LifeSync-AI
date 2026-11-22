@@ -28,6 +28,7 @@ import { AIAssistantWorkspace } from './components/assistant/AIAssistantWorkspac
 import { AutomationsView } from './components/automations/AutomationsView';
 import { CalendarView } from './components/calendar/CalendarView';
 import { PersonalizedDashboard } from './components/dashboard/PersonalizedDashboard';
+import { EmailView } from './components/email/EmailView';
 import { GoalsView } from './components/goals/GoalsView';
 import { HabitsView } from './components/habits/HabitsView';
 import { IntegrationsView } from './components/integrations/IntegrationsView';
@@ -36,6 +37,7 @@ import { Navbar } from './components/layout/Navbar';
 import type { NavTab } from './components/layout/Sidebar';
 import { Sidebar } from './components/layout/Sidebar';
 import { MemoryView } from './components/memory/MemoryView';
+import { NotificationsView } from './components/notifications/NotificationsView';
 import { OnboardingWizard } from './components/onboarding/OnboardingWizard';
 import { FloatingAIPet } from './components/pet/FloatingAIPet';
 import { SettingsView } from './components/settings/SettingsView';
@@ -498,6 +500,8 @@ export default function App() {
         user={user}
         activeRole={activeRole}
         pendingApprovalsCount={approvals.length}
+        emailUnreadCount={dashboardSummary?.email_intelligence?.unread_count || 0}
+        unreadNotificationsCount={notifications.filter((n) => !n.is_read).length}
       />
 
       {/* 2. Main Workstation Shell */}
@@ -527,6 +531,12 @@ export default function App() {
               onLogHabit={handleLogHabit}
               onApproveAction={handleApproveAction}
               onNavigateTab={setActiveTab}
+              onReprioritize={() => {
+                setActiveTab('assistant');
+                handleSendMessage(
+                  'Analyze my deadlines, upcoming events, and active roles, and reprioritize my tasks for optimal focus today.'
+                );
+              }}
               aiCoreStatus={aiCoreStatus}
             />
           )}
@@ -639,6 +649,18 @@ export default function App() {
             <AnalyticsView overview={overviewAnalytics} activeRole={activeRole} />
           )}
 
+          {activeTab === 'email' && (
+            <EmailView onNavigateTab={(tab) => setActiveTab(tab as NavTab)} />
+          )}
+
+          {activeTab === 'notifications' && (
+            <NotificationsView
+              notifications={notifications}
+              onMarkRead={handleMarkNotificationRead}
+              onNavigateTab={(tab) => setActiveTab(tab as NavTab)}
+            />
+          )}
+
           {activeTab === 'integrations' && <IntegrationsView />}
 
           {activeTab === 'settings' && (
@@ -674,6 +696,7 @@ export default function App() {
         onDecideApproval={handleApproveAction}
         aiCoreStatus={aiCoreStatus}
         onStatusChange={setAiCoreStatus}
+        summary={dashboardSummary}
       />
     </div>
   );

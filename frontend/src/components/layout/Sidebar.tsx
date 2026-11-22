@@ -1,6 +1,7 @@
 import React from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
+  Bell,
   Bot,
   Brain,
   Calendar,
@@ -10,6 +11,7 @@ import {
   Flame,
   Layers,
   LayoutDashboard,
+  Mail,
   PieChart,
   Settings,
   Sparkles,
@@ -30,6 +32,8 @@ export type NavTab =
   | 'habits'
   | 'automations'
   | 'memory'
+  | 'email'
+  | 'notifications'
   | 'analytics'
   | 'integrations'
   | 'settings';
@@ -42,6 +46,8 @@ interface SidebarProps {
   user: User | null;
   activeRole: string;
   pendingApprovalsCount: number;
+  emailUnreadCount?: number;
+  unreadNotificationsCount?: number;
 }
 
 interface NavItemDef {
@@ -49,7 +55,12 @@ interface NavItemDef {
   label: string;
   icon: LucideIcon;
   badge?: number | string;
-  section?: string;
+  badgeColor?: 'amber' | 'indigo' | 'emerald';
+}
+
+interface NavGroupDef {
+  category: string;
+  items: NavItemDef[];
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -60,37 +71,78 @@ export const Sidebar: React.FC<SidebarProps> = ({
   user,
   activeRole,
   pendingApprovalsCount,
+  emailUnreadCount = 0,
+  unreadNotificationsCount = 0,
 }) => {
-  const navItems: NavItemDef[] = [
-    { id: 'overview', label: 'Command Center', icon: LayoutDashboard },
-    { id: 'workspace', label: 'My Workspace', icon: Layers },
-    { id: 'assistant', label: 'AI Assistant', icon: Sparkles },
+  const navGroups: NavGroupDef[] = [
     {
-      id: 'agents',
-      label: 'AI Agents',
-      icon: Bot,
-      badge: pendingApprovalsCount > 0 ? pendingApprovalsCount : undefined,
+      category: 'PERSONAL',
+      items: [
+        { id: 'overview', label: 'Command Center', icon: LayoutDashboard },
+        { id: 'workspace', label: 'My Workspace', icon: Layers },
+        { id: 'tasks', label: 'Tasks', icon: CheckCircle2 },
+        { id: 'calendar', label: 'Calendar & Plans', icon: Calendar },
+        { id: 'goals', label: 'Goals & Milestones', icon: Target },
+        { id: 'habits', label: 'Habits & Streaks', icon: Flame },
+      ],
     },
-    { id: 'tasks', label: 'Tasks', icon: CheckCircle2 },
-    { id: 'calendar', label: 'Calendar & Plans', icon: Calendar },
-    { id: 'goals', label: 'Goals & Milestones', icon: Target },
-    { id: 'habits', label: 'Habits & Streaks', icon: Flame },
-    { id: 'automations', label: 'Automations', icon: Workflow },
-    { id: 'memory', label: 'Memory & RAG', icon: Brain },
-    { id: 'analytics', label: 'Analytics', icon: PieChart },
-    { id: 'integrations', label: 'Integrations', icon: Zap },
-    { id: 'settings', label: 'Settings', icon: Settings },
+    {
+      category: 'AI SYSTEM',
+      items: [
+        { id: 'assistant', label: 'AI Assistant', icon: Sparkles },
+        {
+          id: 'agents',
+          label: 'AI Agents',
+          icon: Bot,
+          badge: pendingApprovalsCount > 0 ? pendingApprovalsCount : undefined,
+          badgeColor: 'amber',
+        },
+        { id: 'automations', label: 'Automations', icon: Workflow },
+        { id: 'memory', label: 'Memory & Knowledge', icon: Brain },
+      ],
+    },
+    {
+      category: 'COMMUNICATION',
+      items: [
+        {
+          id: 'email',
+          label: 'Email',
+          icon: Mail,
+          badge: emailUnreadCount > 0 ? emailUnreadCount : undefined,
+          badgeColor: 'indigo',
+        },
+        {
+          id: 'notifications',
+          label: 'Notifications',
+          icon: Bell,
+          badge: unreadNotificationsCount > 0 ? unreadNotificationsCount : undefined,
+          badgeColor: 'amber',
+        },
+      ],
+    },
+    {
+      category: 'INTELLIGENCE',
+      items: [{ id: 'analytics', label: 'Analytics', icon: PieChart }],
+    },
+    {
+      category: 'CONNECTED SERVICES',
+      items: [{ id: 'integrations', label: 'Integrations', icon: Zap }],
+    },
+    {
+      category: 'SYSTEM',
+      items: [{ id: 'settings', label: 'Settings', icon: Settings }],
+    },
   ];
 
   return (
     <aside
-      className={`relative flex flex-col justify-between border-r border-slate-800/80 bg-slate-950/90 backdrop-blur-xl transition-all duration-300 z-30 select-none ${
+      className={`relative flex flex-col justify-between border-r border-slate-800/80 bg-slate-950/95 backdrop-blur-xl transition-all duration-300 z-30 select-none ${
         collapsed ? 'w-20' : 'w-64'
       }`}
     >
-      {/* Top Branding */}
-      <div>
-        <div className="flex items-center justify-between p-4 border-b border-slate-800/60">
+      {/* Top Branding & Nav Groups */}
+      <div className="flex-1 flex flex-col min-h-0">
+        <div className="flex items-center justify-between p-4 border-b border-slate-800/60 shrink-0">
           <div className="flex items-center gap-3 overflow-hidden">
             <div className="relative p-2 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 text-white shadow-lg shadow-indigo-500/25 shrink-0">
               <Sparkles className="w-5 h-5 animate-pulse" />
@@ -117,12 +169,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Active Role Pill */}
         {!collapsed && (
-          <div className="px-4 py-3 border-b border-slate-800/40 bg-slate-900/30">
-            <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1">
+          <div className="px-4 py-2.5 border-b border-slate-800/40 bg-slate-900/30 shrink-0">
+            <div className="text-[9px] font-mono uppercase tracking-wider text-slate-400 mb-0.5">
               Active Context
             </div>
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
               <span className="text-xs font-semibold capitalize text-indigo-300 truncate">
                 {activeRole === 'all' ? 'Omni View (All Roles)' : activeRole}
               </span>
@@ -130,44 +182,66 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
 
-        {/* Navigation Items */}
-        <nav className="p-2 space-y-1 overflow-y-auto max-h-[calc(100vh-220px)]">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => onSelectTab(item.id)}
-                title={collapsed ? item.label : undefined}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all group cursor-pointer ${
-                  isActive
-                    ? 'bg-gradient-to-r from-indigo-600/25 to-violet-600/10 text-white border border-indigo-500/40 font-medium shadow-sm'
-                    : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
-                } ${collapsed ? 'justify-center px-0' : ''}`}
-              >
-                <Icon
-                  className={`w-4 h-4 shrink-0 transition-transform group-hover:scale-110 ${
-                    isActive ? 'text-indigo-400' : 'text-slate-400'
-                  }`}
-                />
-                {!collapsed && <span className="truncate">{item.label}</span>}
-                {!collapsed && item.badge !== undefined && (
-                  <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                    {item.badge}
-                  </span>
-                )}
-                {collapsed && item.badge !== undefined && (
-                  <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-amber-400" />
-                )}
-              </button>
-            );
-          })}
+        {/* Scrollable Navigation Groups */}
+        <nav className="flex-1 p-2 space-y-4 overflow-y-auto scrollbar-none">
+          {navGroups.map((group, gIdx) => (
+            <div key={group.category} className="space-y-1">
+              {!collapsed ? (
+                <div className="px-3 pt-1 pb-1 text-[10px] font-bold tracking-wider text-slate-500 uppercase font-mono">
+                  {group.category}
+                </div>
+              ) : (
+                gIdx > 0 && <div className="my-2 border-t border-slate-800/60" />
+              )}
+
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => onSelectTab(item.id)}
+                    title={collapsed ? `${group.category}: ${item.label}` : undefined}
+                    className={`relative w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs transition-all group cursor-pointer ${
+                      isActive
+                        ? 'bg-gradient-to-r from-indigo-600/25 to-violet-600/15 text-white border border-indigo-500/40 font-medium shadow-sm'
+                        : 'text-slate-400 hover:bg-slate-900/70 hover:text-slate-200'
+                    } ${collapsed ? 'justify-center px-0 py-2.5' : ''}`}
+                  >
+                    <Icon
+                      className={`w-4 h-4 shrink-0 transition-transform group-hover:scale-110 ${
+                        isActive ? 'text-indigo-400' : 'text-slate-400'
+                      }`}
+                    />
+                    {!collapsed && <span className="truncate">{item.label}</span>}
+                    {!collapsed && item.badge !== undefined && (
+                      <span
+                        className={`ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${
+                          item.badgeColor === 'amber'
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                            : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                        }`}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                    {collapsed && item.badge !== undefined && (
+                      <span
+                        className={`absolute top-1.5 right-2 w-2 h-2 rounded-full ${
+                          item.badgeColor === 'amber' ? 'bg-amber-400' : 'bg-indigo-400'
+                        }`}
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </nav>
       </div>
 
       {/* Footer Profile */}
-      <div className="p-3 border-t border-slate-800/60 bg-slate-950/60">
+      <div className="p-3 border-t border-slate-800/60 bg-slate-950/60 shrink-0">
         <div
           onClick={() => onSelectTab('settings')}
           className={`flex items-center gap-3 p-2 rounded-xl hover:bg-slate-900/60 transition cursor-pointer ${
