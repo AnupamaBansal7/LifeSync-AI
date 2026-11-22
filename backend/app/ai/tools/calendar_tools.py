@@ -1,9 +1,9 @@
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 import uuid
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.ai.tools.base import BaseTool
+from app.ai.tools.base import BaseTool, Reversibility
 from app.models.calendar import CalendarEvent, DailyPlan
 
 
@@ -25,6 +25,14 @@ class CreateCalendarBlockTool(BaseTool):
         return "low"
 
     @property
+    def reversibility(self) -> Reversibility:
+        return Reversibility.REVERSIBLE
+
+    @property
+    def is_mutating(self) -> bool:
+        return True
+
+    @property
     def parameters_schema(self) -> Dict[str, Any]:
         return {
             "type": "object",
@@ -38,6 +46,89 @@ class CreateCalendarBlockTool(BaseTool):
                 "is_locked": {"type": "boolean", "default": False},
             },
             "required": ["title"],
+        }
+
+    async def dry_run(self, db: AsyncSession, user_id: uuid.UUID, args: Dict[str, Any]) -> Dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        start_str = args.get("start_time")
+        end_str = args.get("end_time")
+        dur = int(args.get("duration_minutes", 60))
+
+        if start_str:
+            try:
+                start_dt = datetime.fromisoformat(start_str)
+            except ValueError:
+                start_dt = now.replace(hour=9, minute=0, second=0, microsecond=0)
+        else:
+            start_dt = now.replace(hour=9, minute=0, second=0, microsecond=0)
+
+        if end_str:
+            try:
+                end_dt = datetime.fromisoformat(end_str)
+            except ValueError:
+                end_dt = start_dt + timedelta(minutes=dur)
+        else:
+            end_dt = start_dt + timedelta(minutes=dur)
+
+        # Conflict check (read-only)
+        stmt = select(CalendarEvent).where(
+            CalendarEvent.user_id == user_id,
+            CalendarEvent.start_time < end_dt,
+            CalendarEvent.end_time > start_dt,
+        )
+        res = await db.execute(stmt)
+        conflicts = [c.title for c in res.scalars().all()]
+
+        return {
+            "action_summary": f"Schedule calendar event: '{args.get('title', 'Focus Session')}'",
+            "target_entity": "CalendarEvent",
+            "before_state": {},
+            "after_state": {
+                "title": args.get("title", "Focus Session").strip(),
+                "start_time": start_dt.isoformat(),
+                "end_time": end_dt.isoformat(),
+                "event_type": args.get("event_type", "time_block"),
+                "role_context": args.get("role_context", "personal"),
+                "conflicts_detected": conflicts,
+            },
+            "risk_level": "LOW",
+            "reversibility": self.reversibility.value,
+        }
+
+    async def compensate(self, db: AsyncSession, user_id: uuid.UUID, snapshot: Dict[str, Any]) -> Dict[str, Any]:
+        event_id_str = snapshot.get("created_event_id") or snapshot.get("event_id") or snapshot.get("id")
+        if not event_id_str:
+            title = snapshot.get("title")
+            if title:
+                res = await db.execute(select(CalendarEvent).where(CalendarEvent.title == title, CalendarEvent.user_id == user_id))
+                ev = res.scalar_one_or_none()
+                if ev:
+                    event_id_str = str(ev.id)
+
+        if event_id_str:
+            try:
+                ev_id = uuid.UUID(event_id_str)
+                await db.execute(delete(CalendarEvent).where(CalendarEvent.id == ev_id, CalendarEvent.user_id == user_id))
+                await db.commit()
+                return {
+                    "success": True,
+                    "restored_entity_id": str(ev_id),
+                    "details": f"Deleted calendar event '{ev_id}' to revert creation.",
+                    "error": None,
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": str(e),
+                    "restored_entity_id": event_id_str,
+                    "details": "Failed to rollback calendar event.",
+                }
+
+        return {
+            "success": False,
+            "error": "Calendar event ID not found in snapshot for compensation.",
+            "restored_entity_id": None,
+            "details": "Snapshot missing entity ID.",
         }
 
     async def execute(self, db: AsyncSession, user_id: uuid.UUID, args: Dict[str, Any]) -> Dict[str, Any]:

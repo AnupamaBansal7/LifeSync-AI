@@ -382,3 +382,41 @@ export interface Project {
   created_at?: string;
   updated_at?: string;
 }
+
+export interface TransactionStep {
+  id: string;
+  plan_id: string;
+  step_order: number;
+  tool_name: string;
+  reversibility: 'REVERSIBLE' | 'DELAYED_UNDO' | 'IRREVERSIBLE';
+  risk_level: 'LOW' | 'MEDIUM' | 'HIGH';
+  params: Record<string, any>;
+  before_state: Record<string, any>;
+  after_state: Record<string, any>;
+  approved: boolean;
+  status: 'pending' | 'executing' | 'verified' | 'failed' | 'rolled_back' | 'skipped';
+  verification_result?: Record<string, any>;
+  error_message?: string;
+  executed_at?: string;
+}
+
+export interface TransactionPlan {
+  id: string;
+  user_id: string;
+  intent_summary: string;
+  status:
+    | 'SIMULATED'
+    | 'AWAITING_APPROVAL'
+    | 'EXECUTING'
+    | 'VERIFIED'
+    | 'PARTIALLY_FAILED'
+    | 'ROLLED_BACK'
+    | 'CANCELLED';
+  overall_risk: 'LOW' | 'MEDIUM' | 'HIGH';
+  is_fully_reversible: boolean;
+  can_rollback: boolean;
+  created_at: string;
+  executed_at?: string;
+  rolled_back_at?: string;
+  steps: TransactionStep[];
+}

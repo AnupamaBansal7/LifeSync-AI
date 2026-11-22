@@ -8,7 +8,8 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
-import type { ActionApproval, ExecutionStep } from '../../types';
+import type { ActionApproval, ExecutionStep, TransactionPlan } from '../../types';
+import { ShadowDiffCard } from '../executions/ShadowDiffCard';
 
 interface Message {
   sender: 'user' | 'assistant';
@@ -17,6 +18,7 @@ interface Message {
   latency?: number;
   steps?: ExecutionStep[];
   approvals?: ActionApproval[];
+  plan?: TransactionPlan;
 }
 
 interface AssistantProps {
@@ -208,6 +210,12 @@ export const AIAssistantWorkspace: React.FC<AssistantProps> = ({
                         <span>Intent: {msg.intent}</span>
                         <span>•</span>
                         <span>{msg.latency}ms</span>
+                      </div>
+                    )}
+
+                    {!isUser && msg.plan && (
+                      <div className="mt-3 w-full">
+                        <ShadowDiffCard plan={msg.plan} />
                       </div>
                     )}
                   </div>

@@ -1,9 +1,9 @@
 from datetime import date
 from typing import Any, Dict
 import uuid
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.ai.tools.base import BaseTool
+from app.ai.tools.base import BaseTool, Reversibility
 from app.models.productivity import Habit, HabitLog
 
 
@@ -19,6 +19,67 @@ class CreateHabitTool(BaseTool):
     @property
     def requires_approval(self) -> bool:
         return True
+
+    @property
+    def reversibility(self) -> Reversibility:
+        return Reversibility.REVERSIBLE
+
+    @property
+    def is_mutating(self) -> bool:
+        return True
+
+    async def dry_run(self, db: AsyncSession, user_id: uuid.UUID, args: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "action_summary": f"Create habit: '{args.get('title', 'Daily Habit')}' ({args.get('frequency', 'daily')})",
+            "target_entity": "Habit",
+            "before_state": {},
+            "after_state": {
+                "title": args.get("title", "Daily Habit"),
+                "frequency": args.get("frequency", "daily"),
+                "target_days_per_week": int(args.get("target_days_per_week", 7)),
+                "role_context": args.get("role_context", "personal"),
+                "reminder_time": args.get("reminder_time"),
+            },
+            "risk_level": "LOW",
+            "reversibility": self.reversibility.value,
+        }
+
+    async def compensate(self, db: AsyncSession, user_id: uuid.UUID, snapshot: Dict[str, Any]) -> Dict[str, Any]:
+        habit_id_str = snapshot.get("created_habit_id") or snapshot.get("habit_id") or snapshot.get("id")
+        if not habit_id_str:
+            title = snapshot.get("title")
+            if title:
+                res = await db.execute(select(Habit).where(Habit.title == title, Habit.user_id == user_id))
+                h = res.scalar_one_or_none()
+                if h:
+                    habit_id_str = str(h.id)
+
+        if habit_id_str:
+            try:
+                h_id = uuid.UUID(habit_id_str)
+                await db.execute(delete(HabitLog).where(HabitLog.habit_id == h_id))
+                await db.execute(delete(Habit).where(Habit.id == h_id, Habit.user_id == user_id))
+                await db.commit()
+                return {
+                    "success": True,
+                    "restored_entity_id": str(h_id),
+                    "details": f"Deleted habit '{h_id}' to revert creation.",
+                    "error": None,
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": str(e),
+                    "restored_entity_id": habit_id_str,
+                    "details": "Failed to rollback habit.",
+                }
+
+        return {
+            "success": False,
+            "error": "Habit ID not found in snapshot for compensation.",
+            "restored_entity_id": None,
+            "details": "Snapshot missing entity ID.",
+        }
 
     async def execute(self, db: AsyncSession, user_id: uuid.UUID, args: Dict[str, Any]) -> Dict[str, Any]:
         habit = Habit(

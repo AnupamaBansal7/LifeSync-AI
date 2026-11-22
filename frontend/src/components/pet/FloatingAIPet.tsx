@@ -21,8 +21,9 @@ import {
 import confetti from 'canvas-confetti';
 
 import { api } from '../../lib/api';
-import type { ActionApproval, AICoreStatus, DashboardSummary, ExecutionStep, User } from '../../types';
+import type { ActionApproval, AICoreStatus, DashboardSummary, ExecutionStep, TransactionPlan, User } from '../../types';
 import type { NavTab } from '../layout/Sidebar';
+import { ShadowDiffCard } from '../executions/ShadowDiffCard';
 
 interface PetMessage {
   id: string;
@@ -32,6 +33,7 @@ interface PetMessage {
   latency?: number;
   steps?: ExecutionStep[];
   approvals?: ActionApproval[];
+  plan?: TransactionPlan;
   timestamp: Date;
   hasScreen?: boolean;
 }
@@ -362,6 +364,7 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
         latency: res.data.latency_ms,
         steps: res.data.steps,
         approvals: res.data.pending_approvals,
+        plan: res.data.transaction_plan,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, assistantMsg]);
@@ -687,6 +690,17 @@ export const FloatingAIPet: React.FC<FloatingAIPetProps> = ({
                                 )}
                               </div>
                             ))}
+                          </div>
+                        )}
+
+                        {/* Shadow Execution Plan & Reversible Diff Card */}
+                        {msg.plan && (
+                          <div className="pt-2">
+                            <ShadowDiffCard
+                              plan={msg.plan}
+                              onRefreshData={onRefreshData}
+                              compact
+                            />
                           </div>
                         )}
                       </div>

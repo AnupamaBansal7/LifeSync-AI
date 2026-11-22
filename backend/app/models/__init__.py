@@ -24,6 +24,7 @@ from app.models.ai_system import (
 )
 from app.models.automation import Notification, AutomationRule, AutomationTriggerLog
 from app.models.workflow import WorkflowExecution, WorkflowStepExecution
+from app.models.shadow_execution import TransactionPlan, TransactionStep
 
 __all__ = [
     "Base",
@@ -36,7 +37,6 @@ __all__ = [
     "UserIntegration",
     "Project",
     "Task",
-
     "TaskHistory",
     "Goal",
     "Milestone",
@@ -58,5 +58,7 @@ __all__ = [
     "AutomationTriggerLog",
     "WorkflowExecution",
     "WorkflowStepExecution",
+    "TransactionPlan",
+    "TransactionStep",
 ]
 

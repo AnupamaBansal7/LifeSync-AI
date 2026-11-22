@@ -28,6 +28,7 @@ from app.models.calendar import CalendarEvent, DailyPlan
 from app.models.productivity import Goal, Habit, HabitLog, Milestone, Task, TaskHistory
 from app.models.user import User
 from app.services.integrations_service import IntegrationsService
+from app.services.shadow_execution_service import ShadowExecutionService
 
 
 def detect_intent(query: str) -> str:
@@ -63,6 +64,15 @@ def detect_intent(query: str) -> str:
         "reschedule it to", "move it to friday", "move that task to friday"
     ]):
         return "follow_up_reschedule"
+
+    # Compound task and calendar scheduling (e.g. "Create a task to submit report and add calendar event for 3 PM")
+    if (
+        ("task" in q or "todo" in q or "report" in q)
+        and ("calendar" in q or "event" in q or "pm" in q or "am" in q or "time block" in q)
+        and any(k in q for k in ["create", "add", "and", "book", "set", "slot"])
+        and not any(k in q for k in ["summarize", "summary", "list", "show me", "reschedule", "move that"])
+    ):
+        return "compound_task_and_calendar"
 
     if any(k in q for k in [
         "send the same information to", "email that to", "send that summary to",
@@ -437,46 +447,67 @@ async def run_multi_agent_pipeline(
 
     # If the LLM successfully returned dynamic tool calls:
     if llm_tool_calls:
-        executed_summaries = []
+        mutating_calls = []
+        read_only_calls = []
         for call in llm_tool_calls:
             t_name = call.get("name")
-            t_args = call.get("arguments", {})
             tool = get_tool(t_name)
-            if not tool:
-                continue
+            if tool and (getattr(tool, "is_mutating", False) or getattr(tool, "requires_approval", False)):
+                mutating_calls.append(call)
+            elif tool:
+                read_only_calls.append(call)
 
-            agent_name = _get_agent_for_tool(t_name)
+        if mutating_calls:
+            # Simulate transaction plan for mutating tool calls (Shadow Execution Engine)
+            proposed = [
+                {"tool_name": c.get("name"), "args": c.get("arguments", {})}
+                for c in mutating_calls
+            ]
+            plan_dict = await ShadowExecutionService.simulate_plan(
+                db=db,
+                user_id=user.id,
+                intent_summary=user_message[:100],
+                proposed_tool_calls=proposed,
+                auto_approve_if_safe=False,
+                plan_metadata={"agent_run_id": str(agent_run.id), "source": "llm_tool_calls"},
+            )
+            setattr(agent_run, "transaction_plan", plan_dict)
 
-            if tool.requires_approval:
-                # Stage ActionApproval for human confirmation
-                action_desc = f"{agent_name}: Execute '{t_name}' with args {json.dumps(t_args)[:100]}"
-                approval = ActionApproval(
-                    user_id=user.id,
-                    agent_run_id=agent_run.id,
-                    agent_name=agent_name,
-                    tool_name=t_name,
-                    action_summary=action_desc,
-                    tool_arguments=t_args,
-                    status="pending",
-                )
-                db.add(approval)
-                created_approvals.append(approval)
-
-                step_app = AgentExecutionStep(
+            for step_info in plan_dict.get("steps", []):
+                s_rec = AgentExecutionStep(
                     agent_run_id=agent_run.id,
                     step_order=step_counter,
-                    agent_name=agent_name,
-                    tool_name=t_name,
-                    input_summary=t_args,
-                    output_summary={"awaiting_approval": True},
+                    agent_name=_get_agent_for_tool(step_info["tool_name"]),
+                    tool_name=step_info["tool_name"],
+                    input_summary=step_info["params"],
+                    output_summary={"simulated": True, "diff": step_info["after_state"]},
                     status="pending",
                 )
-                db.add(step_app)
-                steps.append(step_app)
+                db.add(s_rec)
+                steps.append(s_rec)
                 step_counter += 1
-                executed_summaries.append(f"• **{agent_name}**: Staged approval for `{t_name}`")
-            else:
-                # Safe low-risk execution
+
+            for call in read_only_calls:
+                t_name = call.get("name")
+                tool = get_tool(t_name)
+                if tool:
+                    await tool.execute(db=db, user_id=user.id, args=call.get("arguments", {}))
+
+            final_reply = (
+                f"**Shadow Execution Simulation Ready**\n\n"
+                f"I've simulated {len(mutating_calls)} proposed action(s) for your request:\n\n"
+                + "\n".join(f"• **{s['tool_name']}**: `{json.dumps(s['params'])[:60]}`" for s in plan_dict.get("steps", []))
+                + f"\n\n🛡️ **No database changes committed.** Please inspect the before/after state diffs in the **Shadow Execution Plan** below and approve to execute."
+            )
+        else:
+            executed_summaries = []
+            for call in read_only_calls:
+                t_name = call.get("name")
+                t_args = call.get("arguments", {})
+                tool = get_tool(t_name)
+                if not tool:
+                    continue
+                agent_name = _get_agent_for_tool(t_name)
                 res_tool = await tool.execute(db=db, user_id=user.id, args=t_args)
                 step_tool = AgentExecutionStep(
                     agent_run_id=agent_run.id,
@@ -492,16 +523,15 @@ async def run_multi_agent_pipeline(
                 step_counter += 1
                 executed_summaries.append(f"• **{agent_name}**: Executed `{t_name}` successfully")
 
-        # Synthesize verified response
-        llm_text = llm_result.get("content")
-        if llm_text:
-            final_reply = llm_text
-        else:
-            final_reply = (
-                f"**LifeSync AI 3.0 — Autonomous Execution Completed**\n\n"
-                + "\n".join(executed_summaries)
-                + "\n\nAll database records have been verified and persisted."
-            )
+            llm_text = llm_result.get("content")
+            if llm_text:
+                final_reply = llm_text
+            else:
+                final_reply = (
+                    f"**LifeSync AI 3.0 — Autonomous Execution Completed**\n\n"
+                    + "\n".join(executed_summaries)
+                    + "\n\nAll database records have been verified and persisted."
+                )
 
     # 5. Fallback & Deterministic Compound Execution Engine (Offline / No Key / Specific Intent)
     else:
@@ -537,6 +567,95 @@ async def run_multi_agent_pipeline(
                 + "\n".join(f"• {el}" for el in res_screen.get("detected_elements", []))
                 + f"\n\n**Next Steps**:\n"
                 + "\n".join(f"{i+1}. {s}" for i, s in enumerate(res_screen.get("suggested_actions", [])))
+            )
+
+        # --- B0. COMPOUND TASK & CALENDAR SCHEDULING (SHADOW EXECUTION) ---
+        # e.g.: "Create a task to submit my report tomorrow and add a calendar event for 3 PM"
+        elif intent == "compound_task_and_calendar":
+            target_dt = _extract_target_date(user_message)
+            dt_str = target_dt.strftime("%A, %b %d")
+
+            # Extract task title from user message
+            clean_m = user_message
+            task_title = "Submit Report"
+            m_task = re.search(r"(?:task\s+(?:to\s+)?|create\s+(?:a\s+)?(?:task\s+to\s+)?)([^\.,;]+?)(?:\s+(?:tomorrow|today|and|at|for|by)|\s*$)", clean_m, flags=re.I)
+            if m_task and len(m_task.group(1).strip()) > 2:
+                task_title = m_task.group(1).strip().capitalize()
+            elif "report" in clean_m.lower():
+                task_title = "Submit Project Report"
+
+            # Extract calendar time (e.g., "3 PM" or "3:30 pm")
+            cal_hour = 15
+            cal_minute = 0
+            time_match = re.search(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)", clean_m, flags=re.I)
+            if time_match:
+                h = int(time_match.group(1))
+                m = int(time_match.group(2) or 0)
+                is_pm = time_match.group(3).lower() == "pm"
+                if is_pm and h < 12:
+                    h += 12
+                elif not is_pm and h == 12:
+                    h = 0
+                cal_hour = h
+                cal_minute = m
+
+            event_start = target_dt.replace(hour=cal_hour, minute=cal_minute, second=0, microsecond=0)
+            event_title = f"{task_title} (Focus Session)"
+
+            proposed_tool_calls = [
+                {
+                    "tool_name": "create_task",
+                    "args": {
+                        "title": task_title,
+                        "priority": "high",
+                        "due_date": target_dt.date().isoformat(),
+                        "role_context": active_role,
+                        "estimated_minutes": 60,
+                    },
+                },
+                {
+                    "tool_name": "create_calendar_block",
+                    "args": {
+                        "title": event_title,
+                        "start_time": event_start.isoformat(),
+                        "duration_minutes": 60,
+                        "role_context": active_role,
+                        "is_locked": True,
+                    },
+                },
+            ]
+
+            plan_dict = await ShadowExecutionService.simulate_plan(
+                db=db,
+                user_id=user.id,
+                intent_summary=f"Create task '{task_title}' and schedule calendar block at {event_start.strftime('%I:%M %p')}",
+                proposed_tool_calls=proposed_tool_calls,
+                auto_approve_if_safe=False,
+                plan_metadata={"agent_run_id": str(agent_run.id), "intent": intent},
+            )
+            setattr(agent_run, "transaction_plan", plan_dict)
+
+            # Record simulated execution steps for full visibility
+            for step_info in plan_dict.get("steps", []):
+                s_rec = AgentExecutionStep(
+                    agent_run_id=agent_run.id,
+                    step_order=step_counter,
+                    agent_name=_get_agent_for_tool(step_info["tool_name"]),
+                    tool_name=step_info["tool_name"],
+                    input_summary=step_info["params"],
+                    output_summary={"simulated": True, "diff": step_info["after_state"]},
+                    status="pending",
+                )
+                db.add(s_rec)
+                steps.append(s_rec)
+                step_counter += 1
+
+            final_reply = (
+                f"**Shadow Execution Simulation Ready**\n\n"
+                f"I've generated a transactional dry-run plan for your request:\n\n"
+                f"1. **Task Management Agent**: Staged `create_task` → *\"{task_title}\"* (Due: {dt_str})\n"
+                f"2. **Calendar Agent**: Staged `create_calendar_block` → *\"{event_title}\"* ({event_start.strftime('%I:%M %p')})\n\n"
+                f"🛡️ **No database records have been modified yet.** You can selectively approve, reject, or inspect each step's before/after state diff using the **Shadow Execution Plan** below."
             )
 
         # --- B. COMPOUND MULTI-AGENT INSTRUCTIONS ---
@@ -1482,7 +1601,8 @@ async def run_multi_agent_pipeline(
                     )
 
     # 6. Finalize Run Status & Latency
-    agent_run.status = "awaiting_approval" if created_approvals else "completed"
+    has_plan = bool(getattr(agent_run, "transaction_plan", None))
+    agent_run.status = "awaiting_approval" if (created_approvals or has_plan) else "completed"
     agent_run.final_response = final_reply
     agent_run.latency_ms = int((time.perf_counter() - t0) * 1000)
 
@@ -1494,12 +1614,19 @@ async def run_multi_agent_pipeline(
             sender="assistant",
             content=final_reply,
             agent_run_id=agent_run.id,
-            structured_payload={"intent": intent, "approvals": len(created_approvals), "steps": len(steps)},
+            structured_payload={"intent": intent, "approvals": len(created_approvals), "steps": len(steps), "has_transaction_plan": has_plan},
         )
     )
 
     # 7. Consent-based Training Dataset Collection
-    if user.preferences and getattr(user.preferences, "training_data_opt_in", False):
+    has_opt_in = False
+    try:
+        if "preferences" in user.__dict__ and user.preferences:
+            has_opt_in = getattr(user.preferences, "training_data_opt_in", False)
+    except Exception:
+        has_opt_in = False
+
+    if has_opt_in:
         await record_training_pair(
             db=db,
             user_id=user.id,

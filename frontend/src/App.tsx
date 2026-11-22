@@ -251,6 +251,7 @@ export default function App() {
           latency: res.data.latency_ms,
           steps: res.data.steps,
           approvals: res.data.pending_approvals,
+          plan: res.data.transaction_plan,
         },
       ]);
       await refreshAllData(activeRole);

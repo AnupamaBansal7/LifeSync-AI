@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 import uuid
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.ai.tools.base import BaseTool
+from app.ai.tools.base import BaseTool, Reversibility
 from app.models.productivity import Task, TaskHistory
 
 
@@ -25,6 +25,14 @@ class CreateTaskTool(BaseTool):
         return "low"
 
     @property
+    def reversibility(self) -> Reversibility:
+        return Reversibility.REVERSIBLE
+
+    @property
+    def is_mutating(self) -> bool:
+        return True
+
+    @property
     def parameters_schema(self) -> Dict[str, Any]:
         return {
             "type": "object",
@@ -39,6 +47,64 @@ class CreateTaskTool(BaseTool):
                 "tags": {"type": "array", "items": {"type": "string"}},
             },
             "required": ["title"],
+        }
+
+    async def dry_run(self, db: AsyncSession, user_id: uuid.UUID, args: Dict[str, Any]) -> Dict[str, Any]:
+        title = args.get("title", "Untitled Task").strip()
+        priority = args.get("priority", "medium")
+        role_context = args.get("role_context", "personal")
+        return {
+            "action_summary": f"Create task: '{title}' ({priority.upper()})",
+            "target_entity": "Task",
+            "before_state": {},
+            "after_state": {
+                "title": title,
+                "priority": priority,
+                "role_context": role_context,
+                "status": "todo",
+                "estimated_minutes": int(args.get("estimated_minutes", 30)),
+                "due_date": args.get("due_date"),
+                "category": args.get("category"),
+            },
+            "risk_level": "LOW",
+            "reversibility": self.reversibility.value,
+        }
+
+    async def compensate(self, db: AsyncSession, user_id: uuid.UUID, snapshot: Dict[str, Any]) -> Dict[str, Any]:
+        task_id_str = snapshot.get("created_task_id") or snapshot.get("task_id") or snapshot.get("id")
+        if not task_id_str:
+            title = snapshot.get("title")
+            if title:
+                res = await db.execute(select(Task).where(Task.title == title, Task.user_id == user_id))
+                t = res.scalar_one_or_none()
+                if t:
+                    task_id_str = str(t.id)
+
+        if task_id_str:
+            try:
+                task_id = uuid.UUID(task_id_str)
+                await db.execute(delete(TaskHistory).where(TaskHistory.task_id == task_id))
+                await db.execute(delete(Task).where(Task.id == task_id, Task.user_id == user_id))
+                await db.commit()
+                return {
+                    "success": True,
+                    "restored_entity_id": str(task_id),
+                    "details": f"Deleted task '{task_id}' to revert creation.",
+                    "error": None,
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": str(e),
+                    "restored_entity_id": task_id_str,
+                    "details": "Failed to rollback task creation.",
+                }
+
+        return {
+            "success": False,
+            "error": "Task ID not found in snapshot for compensation.",
+            "restored_entity_id": None,
+            "details": "Snapshot missing entity ID.",
         }
 
     async def execute(self, db: AsyncSession, user_id: uuid.UUID, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -173,6 +239,14 @@ class UpdateTaskStatusTool(BaseTool):
         return "low"
 
     @property
+    def reversibility(self) -> Reversibility:
+        return Reversibility.REVERSIBLE
+
+    @property
+    def is_mutating(self) -> bool:
+        return True
+
+    @property
     def parameters_schema(self) -> Dict[str, Any]:
         return {
             "type": "object",
@@ -184,6 +258,116 @@ class UpdateTaskStatusTool(BaseTool):
             },
         }
 
+    async def dry_run(self, db: AsyncSession, user_id: uuid.UUID, args: Dict[str, Any]) -> Dict[str, Any]:
+        task_id_str = args.get("task_id")
+        title_q = args.get("title_query")
+        new_status = args.get("status", "completed")
+
+        task = None
+        if task_id_str:
+            try:
+                task_id = uuid.UUID(task_id_str)
+                res = await db.execute(select(Task).where(Task.id == task_id, Task.user_id == user_id))
+                task = res.scalar_one_or_none()
+            except ValueError:
+                pass
+
+        if not task and title_q:
+            clean_q = title_q.strip().lower()
+            res = await db.execute(select(Task).where(Task.user_id == user_id))
+            all_tasks = res.scalars().all()
+            for t in all_tasks:
+                if clean_q in t.title.lower() or t.title.lower() in clean_q:
+                    task = t
+                    break
+
+        if task:
+            before_state = {
+                "task_id": str(task.id),
+                "title": task.title,
+                "status": task.status,
+                "due_date": task.due_date.isoformat() if task.due_date else None,
+                "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+            }
+            after_state = {
+                "task_id": str(task.id),
+                "title": task.title,
+                "status": new_status,
+                "due_date": args.get("due_date") or (task.due_date.isoformat() if task.due_date else None),
+            }
+            return {
+                "action_summary": f"Update status of '{task.title}' from '{task.status}' to '{new_status}'",
+                "target_entity": f"Task:{task.id}",
+                "before_state": before_state,
+                "after_state": after_state,
+                "risk_level": "LOW",
+                "reversibility": self.reversibility.value,
+            }
+
+        return {
+            "action_summary": f"Update task status to '{new_status}' (target query: '{title_q or task_id_str}')",
+            "target_entity": "Task",
+            "before_state": {},
+            "after_state": dict(args),
+            "risk_level": "LOW",
+            "reversibility": self.reversibility.value,
+        }
+
+    async def compensate(self, db: AsyncSession, user_id: uuid.UUID, snapshot: Dict[str, Any]) -> Dict[str, Any]:
+        task_id_str = snapshot.get("task_id")
+        old_status = snapshot.get("status")
+        if not task_id_str or not old_status:
+            return {
+                "success": False,
+                "error": "Missing task_id or previous status in snapshot.",
+                "restored_entity_id": None,
+                "details": "Incomplete snapshot.",
+            }
+
+        try:
+            task_id = uuid.UUID(task_id_str)
+            res = await db.execute(select(Task).where(Task.id == task_id, Task.user_id == user_id))
+            task = res.scalar_one_or_none()
+            if not task:
+                return {
+                    "success": False,
+                    "error": f"Task '{task_id}' not found.",
+                    "restored_entity_id": task_id_str,
+                    "details": "Entity missing.",
+                }
+
+            task.status = old_status
+            if snapshot.get("completed_at"):
+                task.completed_at = datetime.fromisoformat(snapshot["completed_at"])
+            elif old_status != "completed":
+                task.completed_at = None
+
+            if "due_date" in snapshot:
+                task.due_date = datetime.fromisoformat(snapshot["due_date"]) if snapshot["due_date"] else None
+
+            db.add(
+                TaskHistory(
+                    task_id=task.id,
+                    user_id=user_id,
+                    action="rollback",
+                    changes={"status": {"reverted_to": old_status}},
+                    actor="agent:compensate",
+                )
+            )
+            await db.commit()
+            return {
+                "success": True,
+                "restored_entity_id": task_id_str,
+                "details": f"Reverted task '{task.title}' status to '{old_status}'.",
+                "error": None,
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "restored_entity_id": task_id_str,
+                "details": "Failed to rollback task update.",
+            }
 
     async def execute(self, db: AsyncSession, user_id: uuid.UUID, args: Dict[str, Any]) -> Dict[str, Any]:
         task_id_str = args.get("task_id")

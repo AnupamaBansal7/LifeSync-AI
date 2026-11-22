@@ -44,6 +44,7 @@ async def chat_with_agents(
         auto_approve_low_risk=payload.auto_approve_low_risk,
         screen_context=payload.screen_context,
     )
+    plan_dict = getattr(run, "transaction_plan", None)
     return AgentChatResponse(
         conversation_id=conv.id,
         agent_run_id=run.id,
@@ -53,6 +54,7 @@ async def chat_with_agents(
         steps=[ExecutionStepOut.model_validate(s) for s in steps],
         pending_approvals=[ActionApprovalOut.model_validate(a) for a in approvals],
         latency_ms=run.latency_ms,
+        transaction_plan=plan_dict,
     )
 
 
