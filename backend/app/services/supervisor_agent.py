@@ -264,13 +264,13 @@ class SupervisorAgent:
         if is_compound:
             return await cls._execute_compound_task_and_calendar(db, context, user_message)
 
-        # 3. Google Workspace / Document Agent
-        if any(w in q_low for w in ["google doc", "doc", "document", "generate doc", "create doc", "make a doc"]):
-            return await cls._execute_document_agent(db, context, user_message)
-
-        # 4. Task Management Agent
-        if any(w in q_low for w in ["create task", "create a task", "add task", "add a task", "make a task", "todo", "new task", "remind me to"]):
+        # 3. Task Management Agent (Checked before document agent to avoid 'task to review doc' false-positives)
+        if any(w in q_low for w in ["create task", "create a task", "add task", "add a task", "make a task", "todo", "new task", "remind me to", "task to", "schedule task"]):
             return await cls._execute_task_agent(db, context, user_message)
+
+        # 4. Google Workspace / Document Agent
+        if any(w in q_low for w in ["google doc", "generate doc", "create doc", "make a doc", "create a doc", "write a doc", "google document", "new doc"]):
+            return await cls._execute_document_agent(db, context, user_message)
 
         # 5. Calendar Scheduling Agent
         if any(w in q_low for w in ["schedule", "time block", "focus session", "book a slot", "calendar event"]):

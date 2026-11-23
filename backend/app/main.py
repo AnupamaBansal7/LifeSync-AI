@@ -6,6 +6,16 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.services.seed_service import seed_default_roles
+from pgvector.sqlalchemy import Vector
+from sqlalchemy.ext.compiler import compiles
+
+# Ensure Vector compiles gracefully if pgvector c-extension is not present
+try:
+    @compiles(Vector, "postgresql")
+    def _compile_vector(element, compiler, **kw):
+        return "double precision[]"
+except Exception:
+    pass
 
 
 def _get_cors_origins() -> list[str]:
@@ -19,8 +29,11 @@ def _get_cors_origins() -> list[str]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with AsyncSessionLocal() as db:
-        await seed_default_roles(db)
+    try:
+        async with AsyncSessionLocal() as db:
+            await seed_default_roles(db)
+    except Exception as e:
+        print(f"Warning: Failed to seed default roles on startup: {e}")
     yield
 
 

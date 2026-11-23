@@ -34,6 +34,26 @@ async def store_memory(
     return mem
 
 
+_HAS_VECTOR_SUPPORT: Optional[bool] = None
+
+
+async def has_vector_support(db: AsyncSession) -> bool:
+    global _HAS_VECTOR_SUPPORT
+    if _HAS_VECTOR_SUPPORT is not None:
+        return _HAS_VECTOR_SUPPORT
+    dialect_name = db.bind.dialect.name if db.bind else ""
+    if "sqlite" in dialect_name:
+        _HAS_VECTOR_SUPPORT = False
+        return False
+    try:
+        from sqlalchemy import text
+        res = await db.execute(text("SELECT 1 FROM pg_extension WHERE extname = 'vector'"))
+        _HAS_VECTOR_SUPPORT = (res.scalar() is not None)
+    except Exception:
+        _HAS_VECTOR_SUPPORT = False
+    return _HAS_VECTOR_SUPPORT
+
+
 async def retrieve_relevant_memories(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -45,16 +65,15 @@ async def retrieve_relevant_memories(
     if role_context and role_context != "all":
         stmt = stmt.where(Memory.role_context.in_([role_context, "personal"]))
 
-    dialect_name = db.bind.dialect.name if db.bind else ""
-    if "sqlite" in dialect_name:
+    if not (await has_vector_support(db)):
         fallback_stmt = stmt.order_by(Memory.created_at.desc()).limit(limit)
         res = await db.execute(fallback_stmt)
         return list(res.scalars().all())
 
     query_vec = await generate_embedding(query)
     try:
-        stmt = stmt.order_by(Memory.embedding.cosine_distance(query_vec)).limit(limit)
-        res = await db.execute(stmt)
+        stmt_vec = stmt.order_by(Memory.embedding.cosine_distance(query_vec)).limit(limit)
+        res = await db.execute(stmt_vec)
         return list(res.scalars().all())
     except Exception:
         fallback_stmt = stmt.order_by(Memory.created_at.desc()).limit(limit)
@@ -100,8 +119,7 @@ async def search_knowledge_docs(
     query: str,
     limit: int = 3,
 ) -> List[KnowledgeDocument]:
-    dialect_name = db.bind.dialect.name if db.bind else ""
-    if "sqlite" in dialect_name:
+    if not (await has_vector_support(db)):
         fallback_stmt = (
             select(KnowledgeDocument)
             .where(KnowledgeDocument.user_id == user_id)

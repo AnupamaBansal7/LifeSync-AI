@@ -32,8 +32,19 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        connection.commit()
+        has_pgvector = False
+        try:
+            connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            connection.commit()
+            has_pgvector = True
+        except Exception:
+            connection.rollback()
+
+        if not has_pgvector:
+            from pgvector.sqlalchemy import Vector
+            from sqlalchemy.ext.compiler import compiles
+            compiles(Vector, "postgresql")(lambda element, compiler, **kw: "double precision[]")
+
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():
             context.run_migrations()

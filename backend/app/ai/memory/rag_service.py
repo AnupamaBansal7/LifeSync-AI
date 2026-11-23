@@ -3,6 +3,7 @@ import uuid
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.embeddings import generate_embedding
+from app.ai.memory_service import has_vector_support
 from app.models.ai_system import KnowledgeDocument, Memory
 
 
@@ -51,17 +52,37 @@ async def retrieve_context_for_query(
     top_k: int = 4,
 ) -> List[Dict[str, Any]]:
     """Retrieve top-k relevant knowledge chunks and memories with semantic similarity scoring."""
-    query_vec = await generate_embedding(query)
+    has_vec = await has_vector_support(db)
+    query_vec = await generate_embedding(query) if has_vec else None
     results: List[Dict[str, Any]] = []
 
     # Search knowledge documents
-    doc_stmt = (
-        select(KnowledgeDocument)
-        .where(KnowledgeDocument.user_id == user_id)
-        .order_by(KnowledgeDocument.embedding.cosine_distance(query_vec))
-        .limit(top_k)
-    )
-    docs_res = await db.execute(doc_stmt)
+    if has_vec and query_vec is not None:
+        try:
+            doc_stmt = (
+                select(KnowledgeDocument)
+                .where(KnowledgeDocument.user_id == user_id)
+                .order_by(KnowledgeDocument.embedding.cosine_distance(query_vec))
+                .limit(top_k)
+            )
+            docs_res = await db.execute(doc_stmt)
+        except Exception:
+            doc_stmt = (
+                select(KnowledgeDocument)
+                .where(KnowledgeDocument.user_id == user_id)
+                .order_by(KnowledgeDocument.created_at.desc())
+                .limit(top_k)
+            )
+            docs_res = await db.execute(doc_stmt)
+    else:
+        doc_stmt = (
+            select(KnowledgeDocument)
+            .where(KnowledgeDocument.user_id == user_id)
+            .order_by(KnowledgeDocument.created_at.desc())
+            .limit(top_k)
+        )
+        docs_res = await db.execute(doc_stmt)
+
     for d in docs_res.scalars().all():
         results.append({
             "source_type": "document",
@@ -72,16 +93,21 @@ async def retrieve_context_for_query(
         })
 
     # Search memories
-    mem_stmt = (
-        select(Memory)
-        .where(Memory.user_id == user_id)
-        .order_by(Memory.embedding.cosine_distance(query_vec))
-        .limit(top_k)
-    )
+    mem_base = select(Memory).where(Memory.user_id == user_id)
     if role_context and role_context != "all":
-        mem_stmt = mem_stmt.where(Memory.role_context.in_([role_context, "personal"]))
+        mem_base = mem_base.where(Memory.role_context.in_([role_context, "personal"]))
 
-    mem_res = await db.execute(mem_stmt)
+    if has_vec and query_vec is not None:
+        try:
+            mem_stmt = mem_base.order_by(Memory.embedding.cosine_distance(query_vec)).limit(top_k)
+            mem_res = await db.execute(mem_stmt)
+        except Exception:
+            mem_stmt = mem_base.order_by(Memory.created_at.desc()).limit(top_k)
+            mem_res = await db.execute(mem_stmt)
+    else:
+        mem_stmt = mem_base.order_by(Memory.created_at.desc()).limit(top_k)
+        mem_res = await db.execute(mem_stmt)
+
     for m in mem_res.scalars().all():
         results.append({
             "source_type": "memory",
